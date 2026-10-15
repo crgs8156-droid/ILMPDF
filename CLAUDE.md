@@ -49,9 +49,11 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
 
 - `src/core/`: orchestrator (one fresh worker per job), job types, limits,
   validation, file loading, page-range parsing, saving
-- `src/engines/`: `pdflib-ops.ts` (pure pdf-lib edits, run in a worker) and
+- `src/engines/`: `pdflib-ops.ts` (pure pdf-lib edits, run in a worker),
   `pdfjs.ts` (PDF.js rendering; fonts, cmaps and wasm are bundled, never fetched)
-- `src/workers/`: one worker entry per engine (`pdflib.worker.ts`)
+  and `mupdf-ops.ts` (MuPDF: passwords, repair, compress, forms, text)
+- `src/workers/`: one worker entry per engine (`pdflib.worker.ts`, `mupdf.worker.ts`;
+  MuPDF's .wasm is bundled as base64, never fetched)
 - `src/tools/`: one Svelte component per tool, listed in `registry.ts`
 - `src/lib/`: shared Svelte components
 - `vendor/stubs/`: local empty stand-ins for optional native packages we refuse to install

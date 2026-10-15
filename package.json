@@ -20,6 +20,7 @@
     "verify": "npm run check && npm run test && npm run build && npm run test:e2e"
   },
   "dependencies": {
+    "mupdf": "1.28.1",
     "pdf-lib": "1.17.1",
     "pdfjs-dist": "6.3.289"
   },

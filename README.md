@@ -44,9 +44,9 @@ npm run verify    # type check, unit tests, build, browser tests
 npm run make-test-pdfs
 ```
 
-This writes 16 generated test files into `test-pdfs/`: PDFs with 1 to 300 pages,
-mixed sizes, rotated pages, metadata, a password-protected file (password `test`),
-a damaged file, an odd file name and a few PNG images. `test-pdfs/README.md` says
+This writes 20 generated test files into `test-pdfs/`: PDFs with 1 to 300 pages,
+mixed sizes, rotated pages, metadata,
+two password-protected files (RC4 and AES-256, password `test`), a fillable form, a repairable file, a heavy scanned-style file, a damaged file, an odd file name and a few PNG images. `test-pdfs/README.md` says
 what each one is for. They are never committed. Use these instead of real documents.
 
 Browser tests need Playwright's browsers once: `npx playwright install webkit chromium`.
