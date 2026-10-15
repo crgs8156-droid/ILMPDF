@@ -10,7 +10,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  reporter: 'list',
+  // On CI, the github reporter turns each failure into an annotation on the PR.
+  reporter: process.env.CI ? [['github'], ['list']] : 'list',
   use: {
     baseURL: BASE_URL,
     acceptDownloads: true,
