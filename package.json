@@ -15,6 +15,7 @@
     "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "make-test-pdfs": "node scripts/make-test-pdfs.mjs",
     "audit:deps": "npm audit --audit-level=low && npm audit signatures",
     "verify": "npm run check && npm run test && npm run build && npm run test:e2e"
   },
