@@ -20,6 +20,8 @@
   let pageIndex = $state(0);
   let canvas = $state<HTMLCanvasElement>();
   let boxEl = $state<HTMLDivElement>();
+  // True once the current page has finished drawing, so the frame matches it.
+  let rendered = $state(false);
 
   // The area to keep, as fractions of the page as shown.
   const START: CropBox = { x: 0.1, y: 0.1, width: 0.8, height: 0.8 };
@@ -42,7 +44,10 @@
 
   $effect(() => {
     if (!doc || !canvas) return;
-    renderPage(doc, pageIndex + 1, canvas, 520).catch(() => (previewError = ['Preview unavailable for this page.']));
+    rendered = false;
+    renderPage(doc, pageIndex + 1, canvas, 520)
+      .then(() => (rendered = true))
+      .catch(() => (previewError = ['Preview unavailable for this page.']));
   });
 
   // Draw the crop frame through the style object (CSSOM); the production CSP
@@ -63,7 +68,7 @@
 
   // Dragging on the page draws a new frame from corner to corner.
   function drag(e: PointerEvent) {
-    if (!dragFrom) return;
+    if (!dragFrom || !rendered) return;
     const [fx, fy] = fraction(e);
     const [sx, sy] = dragFrom;
     if (Math.abs(fx - sx) < 0.02 || Math.abs(fy - sy) < 0.02) return; // too small to mean anything yet
@@ -96,6 +101,7 @@
     class="page"
     role="presentation"
     onpointerdown={(e) => {
+      if (!rendered) return;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       dragFrom = fraction(e);
     }}
@@ -103,6 +109,7 @@
     onpointerup={() => (dragFrom = null)}
     onpointercancel={() => (dragFrom = null)}
     data-testid="page-preview"
+    data-ready={rendered}
   >
     <canvas bind:this={canvas}></canvas>
     <div class="frame" bind:this={boxEl}></div>

@@ -15,7 +15,9 @@ function watchCsp(page: Page): string[] {
 
 async function dragFrame(page: Page, from: [number, number], to: [number, number]) {
   const preview = page.getByTestId('page-preview');
-  await expect(preview.locator('canvas')).toBeVisible();
+  // Wait until the page has finished drawing: before that the preview has a
+  // placeholder size, and a drag measured against it lands in the wrong place.
+  await expect(preview).toHaveAttribute('data-ready', 'true');
   const box = (await preview.boundingBox())!;
   await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
   await page.mouse.down();
