@@ -34,6 +34,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
   switch (job.op) {
     case 'inspect':
       return { info: ops.inspect(mupdf, job.file) };
+    case 'unlock':
+      return { files: [ops.unlock(mupdf, job.file, job.password)] };
   }
 }
 

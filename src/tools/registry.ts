@@ -7,6 +7,7 @@ import PdfToImagesTool from './PdfToImagesTool.svelte';
 import PageNumbersTool from './PageNumbersTool.svelte';
 import WatermarkTool from './WatermarkTool.svelte';
 import MetadataTool from './MetadataTool.svelte';
+import UnlockTool from './UnlockTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -18,5 +19,6 @@ export const TOOLS: Tool[] = [
   { id: 'pdf-to-images', name: 'PDF to images', blurb: 'Save pages as PNG or JPG images.', group: 'Convert', component: PdfToImagesTool },
   { id: 'page-numbers', name: 'Page numbers', blurb: 'Stamp page numbers on every page.', group: 'Edit', component: PageNumbersTool },
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
+  { id: 'unlock', name: 'Unlock PDF', blurb: 'Remove a password you know, so the PDF opens freely.', group: 'Security', component: UnlockTool },
   { id: 'metadata', name: 'Remove metadata', blurb: 'See and remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
 ];

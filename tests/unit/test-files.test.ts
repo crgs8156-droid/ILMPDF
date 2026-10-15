@@ -10,7 +10,7 @@ describe('make-test-pdfs', async () => {
   const byName = Object.fromEntries(files.map((f) => [f.name, f.bytes]));
 
   it('builds every file with a purpose', () => {
-    expect(files.length).toBe(20);
+    expect(files.length).toBe(21);
     for (const f of files) {
       expect(f.bytes.length).toBeGreaterThan(0);
       expect(f.purpose.length).toBeGreaterThan(0);

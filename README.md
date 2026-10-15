@@ -3,7 +3,7 @@
 A private PDF toolkit for your Mac. Everything runs inside your browser, and
 files never leave your computer: the app is technically blocked from using the network.
 
-**Status:** Phase 1. Everyday page tools work offline:
+**Status:** Phase 2 in progress. These tools work offline:
 
 - Merge PDFs, in the order you choose
 - Split by page ranges or every N pages
@@ -13,8 +13,9 @@ files never leave your computer: the app is technically blocked from using the n
 - Add page numbers
 - Add a text watermark
 - View and remove metadata (author, title, dates)
+- Unlock a PDF whose password you know (never guesses or cracks passwords)
 
-Password-protected PDFs are refused for now; unlocking arrives in Phase 2.
+Other tools refuse password-protected PDFs; unlock them first.
 
 ## First run on your Mac
 
@@ -44,9 +45,9 @@ npm run verify    # type check, unit tests, build, browser tests
 npm run make-test-pdfs
 ```
 
-This writes 20 generated test files into `test-pdfs/`: PDFs with 1 to 300 pages,
+This writes 21 generated test files into `test-pdfs/`: PDFs with 1 to 300 pages,
 mixed sizes, rotated pages, metadata,
-two password-protected files (RC4 and AES-256, password `test`), a fillable form, a repairable file, a heavy scanned-style file, a damaged file, an odd file name and a few PNG images. `test-pdfs/README.md` says
+two password-protected files (RC4 and AES-256, password `test`), a restricted file (owner password `owner-test`), a fillable form, a repairable file, a heavy scanned-style file, a damaged file, an odd file name and a few PNG images. `test-pdfs/README.md` says
 what each one is for. They are never committed. Use these instead of real documents.
 
 Browser tests need Playwright's browsers once: `npx playwright install webkit chromium`.
