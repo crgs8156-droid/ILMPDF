@@ -69,7 +69,7 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   } catch (err) {
     await task.destroy();
     const name = (err as { name?: string }).name;
-    if (name === 'PasswordException') throw new Error('This PDF is password-protected. Unlocking arrives in Phase 2.');
+    if (name === 'PasswordException') throw new Error('This PDF is password-protected. Remove the password with the Unlock tool first.');
     throw new Error('This file could not be read as a PDF. It may be damaged.');
   }
 }

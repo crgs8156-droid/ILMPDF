@@ -15,12 +15,12 @@ export async function load(bytes: Uint8Array): Promise<PDFDocument> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : '';
     if (/encrypt/i.test(msg)) {
-      throw new UserFacingError('This PDF is password-protected. Unlocking arrives in Phase 2.');
+      throw new UserFacingError('This PDF is password-protected. Remove the password with the Unlock tool first.');
     }
     throw new UserFacingError('This file could not be read as a PDF. It may be damaged.');
   }
   if (doc.isEncrypted) {
-    throw new UserFacingError('This PDF is password-protected. Unlocking arrives in Phase 2.');
+    throw new UserFacingError('This PDF is password-protected. Remove the password with the Unlock tool first.');
   }
   let count: number;
   try {

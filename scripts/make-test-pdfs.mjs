@@ -193,10 +193,12 @@ function encryptedPdf(userPassword, ownerPassword) {
 
 // ---- Phase 2 files (made with MuPDF, which can write AES-256) ----
 
-function aes256Pdf(source, userPassword, ownerPassword) {
+function aes256Pdf(source, userPassword, ownerPassword, permissions = -4) {
   const doc = mupdf.Document.openDocument(source, 'application/pdf').asPDF();
   try {
-    const out = doc.saveToBuffer(`encrypt=aes-256,user-password=${userPassword},owner-password=${ownerPassword}`);
+    const out = doc.saveToBuffer(
+      `encrypt=aes-256,user-password=${userPassword},owner-password=${ownerPassword},permissions=${permissions}`,
+    );
     return new Uint8Array(out.asUint8Array());
   } finally {
     doc.destroy();
@@ -297,6 +299,11 @@ export async function buildTestFiles() {
       name: '14-password-aes256-is-test.pdf',
       purpose: 'AES-256 encrypted, the modern standard. Password: test (owner password: owner-test).',
       bytes: aes256Pdf(await pagesPdf('AES-256 locked', five), 'test', 'owner-test'),
+    },
+    {
+      name: '18-restricted-owner-password-is-owner-test.pdf',
+      purpose: 'Opens without a password but blocks printing and copying. Owner password: owner-test.',
+      bytes: aes256Pdf(await pagesPdf('Restricted', [A4, A4]), '', 'owner-test', -3904),
     },
     { name: '15-form.pdf', purpose: 'Fillable form: text boxes, a checkbox, a dropdown and radio buttons.', bytes: await formPdf() },
     { name: '16-repairable.pdf', purpose: 'Broken cross-reference table: normal readers fail, Repair should fix it.', bytes: await repairablePdf() },

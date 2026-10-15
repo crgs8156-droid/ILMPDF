@@ -22,7 +22,10 @@ export type PdfJob =
 export type JobRequest = { id: string; job: PdfJob };
 
 /** Jobs for the MuPDF worker (Phase 2 engine). */
-export type MupdfJob = { op: 'inspect'; file: Uint8Array };
+export type MupdfJob =
+  | { op: 'inspect'; file: Uint8Array }
+  // The password is only ever held in memory for this one job.
+  | { op: 'unlock'; file: Uint8Array; password: string };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
