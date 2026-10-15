@@ -10,7 +10,7 @@ describe('make-test-pdfs', async () => {
   const byName = Object.fromEntries(files.map((f) => [f.name, f.bytes]));
 
   it('builds every file with a purpose', () => {
-    expect(files.length).toBe(16);
+    expect(files.length).toBe(20);
     for (const f of files) {
       expect(f.bytes.length).toBeGreaterThan(0);
       expect(f.purpose.length).toBeGreaterThan(0);
@@ -28,6 +28,8 @@ describe('make-test-pdfs', async () => {
       '07-rotated-pages.pdf': 4,
       '08-with-metadata.pdf': 2,
       '09-large-images.pdf': 2,
+      '15-form.pdf': 1,
+      '17-scanned-heavy.pdf': 3,
     };
     for (const [name, count] of Object.entries(expected)) {
       const doc = await PDFDocument.load(byName[name]!);
@@ -42,6 +44,10 @@ describe('make-test-pdfs', async () => {
     expect(rotated.getPages().map((p) => p.getRotation().angle)).toEqual([0, 90, 180, 270]);
     const locked = await PDFDocument.load(byName['10-password-is-test.pdf']!, { ignoreEncryption: true });
     expect(locked.isEncrypted).toBe(true);
+    const aes = await PDFDocument.load(byName['14-password-aes256-is-test.pdf']!, { ignoreEncryption: true });
+    expect(aes.isEncrypted).toBe(true);
+    const form = await PDFDocument.load(byName['15-form.pdf']!);
+    expect(form.getForm().getFields().map((f) => f.getName())).toEqual(['full_name', 'email', 'subscribe', 'plan', 'size']);
   });
 
   it('makes the broken files actually broken', async () => {

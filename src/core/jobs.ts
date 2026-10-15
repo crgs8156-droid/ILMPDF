@@ -2,6 +2,7 @@
 // own copy of each file; every job receives fresh copies that are
 // transferred (moved, not cloned) into the worker.
 import type { ImageInput, NumberPosition, PagePlan, PageSize } from '../engines/pdflib-ops';
+import type { PdfInfo } from '../engines/mupdf-ops';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -20,6 +21,11 @@ export type PdfJob =
 
 export type JobRequest = { id: string; job: PdfJob };
 
-export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string> };
+/** Jobs for the MuPDF worker (Phase 2 engine). */
+export type MupdfJob = { op: 'inspect'; file: Uint8Array };
+
+export type MupdfRequest = { id: string; job: MupdfJob };
+
+export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string>; info?: PdfInfo };
 
 export type JobResult = ({ ok: true } & JobOutput & { id: string }) | { id: string; ok: false; error: string };

@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { crc32, deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import * as mupdf from 'mupdf';
 import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
@@ -190,6 +191,67 @@ function encryptedPdf(userPassword, ownerPassword) {
   return new Uint8Array(Buffer.concat(parts));
 }
 
+// ---- Phase 2 files (made with MuPDF, which can write AES-256) ----
+
+function aes256Pdf(source, userPassword, ownerPassword) {
+  const doc = mupdf.Document.openDocument(source, 'application/pdf').asPDF();
+  try {
+    const out = doc.saveToBuffer(`encrypt=aes-256,user-password=${userPassword},owner-password=${ownerPassword}`);
+    return new Uint8Array(out.asUint8Array());
+  } finally {
+    doc.destroy();
+  }
+}
+
+async function formPdf() {
+  const doc = await newDoc('Form');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage(A4);
+  const form = doc.getForm();
+  const label = (text, y) => page.drawText(text, { x: 50, y, size: 12, font });
+  page.drawText('Test form', { x: 50, y: 780, size: 22, font });
+  label('Full name', 720);
+  form.createTextField('full_name').addToPage(page, { x: 160, y: 712, width: 300, height: 22 });
+  label('Email', 680);
+  form.createTextField('email').addToPage(page, { x: 160, y: 672, width: 300, height: 22 });
+  label('Subscribe', 640);
+  form.createCheckBox('subscribe').addToPage(page, { x: 160, y: 634, width: 18, height: 18 });
+  label('Plan', 600);
+  const plan = form.createDropdown('plan');
+  plan.addOptions(['Free', 'Pro', 'Team']);
+  plan.addToPage(page, { x: 160, y: 592, width: 150, height: 22 });
+  label('Size', 560);
+  const size = form.createRadioGroup('size');
+  size.addOptionToPage('Small', page, { x: 160, y: 554, width: 16, height: 16 });
+  size.addOptionToPage('Large', page, { x: 220, y: 554, width: 16, height: 16 });
+  return doc.save();
+}
+
+// Points the cross-reference table at the wrong place, so a normal reader
+// fails but a repair tool can rebuild it.
+async function repairablePdf() {
+  const bytes = await pagesPdf('Repairable', Array(3).fill(A4));
+  const text = Buffer.from(bytes).toString('latin1');
+  const broken = text.replace(/startxref\s+\d+/, 'startxref\n999999');
+  return new Uint8Array(Buffer.from(broken, 'latin1'));
+}
+
+// Large, hard-to-compress page images, like a scanner makes.
+async function scannedPdf() {
+  const doc = await newDoc('Scanned');
+  let seed = 7;
+  const noise = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) >> 16) & 255;
+  for (let i = 0; i < 3; i++) {
+    const [w, h] = [1240, 1754]; // A4 at 150 dpi
+    const image = await doc.embedPng(png(w, h, (x, y) => {
+      const v = 225 + (noise() % 30) - (Math.floor(y / 40) % 2 && x > 120 && x < 1100 ? 120 : 0);
+      return [v, v, v];
+    }));
+    doc.addPage(A4).drawImage(image, { x: 0, y: 0, width: A4[0], height: A4[1] });
+  }
+  return doc.save();
+}
+
 // ---- The full set ----
 
 export async function buildTestFiles() {
@@ -231,6 +293,14 @@ export async function buildTestFiles() {
       purpose: 'A file name that looks like HTML: ILMPDF must show it as plain text, with no pop-up.',
       bytes: await pagesPdf('Odd file name', [A4]),
     },
+    {
+      name: '14-password-aes256-is-test.pdf',
+      purpose: 'AES-256 encrypted, the modern standard. Password: test (owner password: owner-test).',
+      bytes: aes256Pdf(await pagesPdf('AES-256 locked', five), 'test', 'owner-test'),
+    },
+    { name: '15-form.pdf', purpose: 'Fillable form: text boxes, a checkbox, a dropdown and radio buttons.', bytes: await formPdf() },
+    { name: '16-repairable.pdf', purpose: 'Broken cross-reference table: normal readers fail, Repair should fix it.', bytes: await repairablePdf() },
+    { name: '17-scanned-heavy.pdf', purpose: 'Three big scanned-style pages: Compress should make it much smaller.', bytes: await scannedPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },

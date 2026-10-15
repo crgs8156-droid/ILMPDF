@@ -85,6 +85,8 @@ export default defineConfig({
   },
   worker: {
     format: 'es',
+    // Workers are bundled separately; the MuPDF worker inlines its .wasm too.
+    plugins: () => [inlineBinary()],
   },
   test: {
     include: ['tests/unit/**/*.test.ts'],
