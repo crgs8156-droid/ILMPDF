@@ -122,3 +122,35 @@ function randomSecret(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(24));
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+export type RepairResult = { file: Uint8Array; pages: number; repaired: boolean };
+
+/**
+ * Rebuilds a damaged PDF. MuPDF repairs a broken cross-reference table while
+ * opening the file (by scanning for every object); saving then writes a fresh,
+ * consistent file with only the objects still in use.
+ */
+export function repair(mupdf: Mupdf, bytes: Uint8Array): RepairResult {
+  const pdf = open(mupdf, bytes);
+  try {
+    if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then repair it.');
+    let pages = 0;
+    try {
+      pages = pdf.countPages();
+    } catch {
+      // A page tree MuPDF cannot follow counts as no pages recovered.
+    }
+    if (pages === 0) throw new UserFacingError('This PDF is too damaged to repair: no pages could be recovered.');
+    if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    let out: MuPDF.Buffer;
+    try {
+      // Any password restrictions (no printing, etc.) are kept as they were.
+      out = pdf.saveToBuffer({ garbage: 'compact' });
+    } catch {
+      throw new UserFacingError('This PDF is too damaged to repair.');
+    }
+    return { file: new Uint8Array(out.asUint8Array()), pages, repaired: pdf.wasRepaired() };
+  } finally {
+    pdf.destroy();
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
-import { inspect, open, protect, unlock } from '../../src/engines/mupdf-ops';
+import { inspect, open, protect, repair, unlock } from '../../src/engines/mupdf-ops';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
@@ -101,5 +101,46 @@ describe('protect', () => {
     expect(() => protect(mupdf, makePdf(1), { password: '', ...all })).toThrow('Enter a password.');
     const locked = protect(mupdf, makePdf(1), { password: 'a', ...all });
     expect(() => protect(mupdf, locked, { password: 'b', ...all })).toThrow(/already has a password/);
+  });
+});
+
+describe('repair', async () => {
+  const { PDFDocument } = await import('pdf-lib');
+  const files: { name: string; bytes: Uint8Array }[] = await buildTestFiles();
+  const get = (name: string) => files.find((f) => f.name === name)!.bytes;
+
+  it('rebuilds a broken cross-reference table', async () => {
+    const result = repair(mupdf, get('16-repairable.pdf'));
+    expect(result).toMatchObject({ pages: 3, repaired: true });
+    // The fixed copy opens cleanly, with no repair needed, in both engines.
+    const doc = open(mupdf, result.file);
+    expect(doc.wasRepaired()).toBe(false);
+    doc.destroy();
+    expect((await PDFDocument.load(result.file)).getPageCount()).toBe(3);
+  });
+
+  it('recovers the pages of a file cut off near the end', () => {
+    const five = get('02-five-pages.pdf');
+    const result = repair(mupdf, five.slice(0, Math.floor(five.length * 0.9)));
+    expect(result).toMatchObject({ pages: 5, repaired: true });
+    expect(inspect(mupdf, result.file).pages).toBe(5);
+  });
+
+  it('rewrites an undamaged file and says no repair was needed', () => {
+    expect(repair(mupdf, makePdf(4))).toMatchObject({ pages: 4, repaired: false });
+  });
+
+  it('gives a clear message when nothing can be recovered', () => {
+    expect(() => repair(mupdf, get('11-damaged.pdf'))).toThrow('too damaged to repair');
+    expect(() => repair(mupdf, get('12-not-really-a-pdf.pdf'))).toThrow();
+  });
+
+  it('asks for a password-protected file to be unlocked first', () => {
+    expect(() => repair(mupdf, get('14-password-aes256-is-test.pdf'))).toThrow('Unlock it first');
+  });
+
+  it('keeps the restrictions on a restricted file', () => {
+    const result = repair(mupdf, get('18-restricted-owner-password-is-owner-test.pdf'));
+    expect(inspect(mupdf, result.file)).toMatchObject({ encrypted: true, needsPassword: false });
   });
 });

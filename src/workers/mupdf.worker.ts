@@ -38,6 +38,10 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { files: [ops.unlock(mupdf, job.file, job.password)] };
     case 'protect':
       return { files: [ops.protect(mupdf, job.file, job.opts)] };
+    case 'repair': {
+      const { file, pages, repaired } = ops.repair(mupdf, job.file);
+      return { files: [file], count: pages, repaired };
+    }
   }
 }
 
