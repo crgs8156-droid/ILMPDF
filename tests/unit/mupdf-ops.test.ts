@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
-import { inspect, open, unlock } from '../../src/engines/mupdf-ops';
+import { inspect, open, protect, unlock } from '../../src/engines/mupdf-ops';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
@@ -56,5 +56,50 @@ describe('unlock', async () => {
 
   it('says so when a PDF has no password', () => {
     expect(() => unlock(mupdf, makePdf(2), 'x')).toThrow(/isn't password-protected/);
+  });
+});
+
+describe('protect', () => {
+  const all = { allowPrint: true, allowCopy: true, allowEdit: true };
+
+  it('makes an AES-256 file that opens only with the password', () => {
+    const out = protect(mupdf, makePdf(3), { password: 'correct horse', ...all });
+    expect(inspect(mupdf, out)).toMatchObject({ encrypted: true, needsPassword: true });
+    const doc = mupdf.Document.openDocument(out, 'application/pdf');
+    expect(doc.getMetaData(mupdf.Document.META_ENCRYPTION)).toContain('AES');
+    expect(doc.authenticatePassword('wrong')).toBe(0);
+    expect(doc.authenticatePassword('correct horse')).not.toBe(0);
+    expect(doc.countPages()).toBe(3);
+    doc.destroy();
+  });
+
+  it('round-trips with unlock', () => {
+    const out = protect(mupdf, makePdf(2), { password: 'pässwörd ✓', ...all });
+    expect(inspect(mupdf, unlock(mupdf, out, 'pässwörd ✓'))).toEqual({ pages: 2, encrypted: false, needsPassword: false });
+  });
+
+  it('keeps commas and equals signs in the password instead of reading them as options', () => {
+    const tricky = 'a,encrypt=no,user-password=x';
+    const out = protect(mupdf, makePdf(1), { password: tricky, ...all });
+    const doc = mupdf.Document.openDocument(out, 'application/pdf');
+    expect(doc.authenticatePassword('x')).toBe(0);
+    expect(doc.authenticatePassword(tricky)).not.toBe(0);
+    doc.destroy();
+  });
+
+  it('applies the chosen restrictions', () => {
+    const out = protect(mupdf, makePdf(1), { password: 'pw', allowPrint: true, allowCopy: false, allowEdit: false });
+    const doc = mupdf.Document.openDocument(out, 'application/pdf');
+    doc.authenticatePassword('pw');
+    expect(doc.hasPermission('print')).toBe(true);
+    expect(doc.hasPermission('copy')).toBe(false);
+    expect(doc.hasPermission('edit')).toBe(false);
+    doc.destroy();
+  });
+
+  it('refuses an empty password and an already locked file', () => {
+    expect(() => protect(mupdf, makePdf(1), { password: '', ...all })).toThrow('Enter a password.');
+    const locked = protect(mupdf, makePdf(1), { password: 'a', ...all });
+    expect(() => protect(mupdf, locked, { password: 'b', ...all })).toThrow(/already has a password/);
   });
 });
