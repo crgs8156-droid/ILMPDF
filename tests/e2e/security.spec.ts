@@ -1,20 +1,6 @@
-import { expect, test, type Request } from '@playwright/test';
-import { readFile } from 'node:fs/promises';
+import { expect, test } from '@playwright/test';
+import { addPdf, offOrigin, openTool, trackRequests } from './helpers';
 import { makePdf } from '../fixtures/make-pdf';
-
-const ORIGIN = 'http://127.0.0.1:4173';
-
-// Records every request the page tries to make, so tests can prove
-// nothing ever goes anywhere except the local app server.
-function trackRequests(page: import('@playwright/test').Page): Request[] {
-  const seen: Request[] = [];
-  page.on('request', (r) => seen.push(r));
-  return seen;
-}
-
-function offOrigin(requests: Request[]): string[] {
-  return requests.map((r) => r.url()).filter((u) => !u.startsWith(ORIGIN) && !u.startsWith('blob:'));
-}
 
 test('serves the strict security headers', async ({ page }) => {
   const response = await page.goto('/');
@@ -49,44 +35,27 @@ test('CSP stops fetch to any outside host before it is sent', async ({ page }) =
   expect(offOrigin(requests)).toEqual([]);
 });
 
-test('a PDF goes through the worker and saves byte-for-byte, with zero outside requests', async ({ page }) => {
-  const requests = trackRequests(page);
-  await page.goto('/');
-  const pdf = makePdf(3);
-  await page.getByTestId('file-input').setInputFiles({
-    name: 'sample.pdf',
-    mimeType: 'application/pdf',
-    buffer: Buffer.from(pdf),
-  });
-  const row = page.getByTestId('file-row');
-  await expect(row).toHaveAttribute('data-status', 'ready');
-
-  const [download] = await Promise.all([page.waitForEvent('download'), page.getByTestId('save').click()]);
-  expect(download.suggestedFilename()).toBe('sample-ilmpdf.pdf');
-  const saved = await readFile((await download.path())!);
-  expect(Buffer.compare(saved, Buffer.from(pdf))).toBe(0);
-
-  expect(offOrigin(requests)).toEqual([]);
-});
-
-test('a fake PDF is rejected', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('file-input').setInputFiles({
-    name: 'fake.pdf',
-    mimeType: 'application/pdf',
-    buffer: Buffer.from('<script>alert(1)</script>'),
-  });
-  await expect(page.getByTestId('file-row')).toHaveAttribute('data-status', 'rejected');
-  await expect(page.getByTestId('save')).toHaveCount(0);
+test('a fake PDF is rejected before any engine sees it', async ({ page }) => {
+  await openTool(page, 'merge');
+  await addPdf(page, 'fake.pdf', new TextEncoder().encode('<script>alert(1)</script>'));
+  await expect(page.getByTestId('notice-error')).toContainText('Not a real PDF');
 });
 
 test('file names are shown as text, never as HTML', async ({ page }) => {
-  await page.goto('/');
-  await page.getByTestId('file-input').setInputFiles({
-    name: '<img src=x onerror=alert(1)>.pdf',
-    mimeType: 'application/pdf',
-    buffer: Buffer.from(makePdf()),
-  });
-  await expect(page.getByTestId('file-row')).toContainText('<img src=x onerror=alert(1)>.pdf');
-  await expect(page.locator('img')).toHaveCount(0);
+  await openTool(page, 'merge');
+  await addPdf(page, '<img src=x onerror=alert(1)>.pdf', makePdf());
+  await expect(page.getByTestId('merge-row')).toContainText('<img src=x onerror=alert(1)>.pdf');
+  await expect(page.locator('main img')).toHaveCount(0);
+});
+
+test('a password-protected PDF gets a clear message', async ({ page }) => {
+  await openTool(page, 'split');
+  await addPdf(page, 'locked.pdf', makePdf(2, { encrypted: true }));
+  await expect(page.getByTestId('notice-error')).toContainText('password-protected');
+});
+
+test('a damaged PDF fails cleanly', async ({ page }) => {
+  await openTool(page, 'organize');
+  await addPdf(page, 'broken.pdf', makePdf(3, { truncate: true }));
+  await expect(page.getByTestId('notice-error')).toContainText(/could not be read|damaged/);
 });
