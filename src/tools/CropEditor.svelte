@@ -20,6 +20,7 @@
   let pageIndex = $state(0);
   let canvas = $state<HTMLCanvasElement>();
   let boxEl = $state<HTMLDivElement>();
+  let pageEl = $state<HTMLDivElement>();
   // True once the current page has finished drawing, so the frame matches it.
   let rendered = $state(false);
 
@@ -60,15 +61,19 @@
     boxEl.style.height = `${box.height * 100}%`;
   });
 
+  // Measures against the preview element itself rather than the event's
+  // target, which differs between browsers while the pointer is captured.
   function fraction(e: PointerEvent): [number, number] {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const r = pageEl!.getBoundingClientRect();
     const clampUnit = (n: number) => Math.min(1, Math.max(0, n));
     return [clampUnit((e.clientX - r.left) / r.width), clampUnit((e.clientY - r.top) / r.height)];
   }
 
-  // Dragging on the page draws a new frame from corner to corner.
+  // Dragging on the page draws a new frame from corner to corner. The frame
+  // follows the pointer while it moves and is set once more where it is let
+  // go, in case a browser sends few or no move events.
   function drag(e: PointerEvent) {
-    if (!dragFrom || !rendered) return;
+    if (!dragFrom || !rendered || !pageEl) return;
     const [fx, fy] = fraction(e);
     const [sx, sy] = dragFrom;
     if (Math.abs(fx - sx) < 0.02 || Math.abs(fy - sy) < 0.02) return; // too small to mean anything yet
@@ -100,13 +105,17 @@
   <div
     class="page"
     role="presentation"
+    bind:this={pageEl}
     onpointerdown={(e) => {
-      if (!rendered) return;
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      if (!rendered || !pageEl) return;
+      pageEl.setPointerCapture(e.pointerId);
       dragFrom = fraction(e);
     }}
     onpointermove={drag}
-    onpointerup={() => (dragFrom = null)}
+    onpointerup={(e) => {
+      drag(e);
+      dragFrom = null;
+    }}
     onpointercancel={() => (dragFrom = null)}
     data-testid="page-preview"
     data-ready={rendered}

@@ -21,8 +21,7 @@ async function dragFrame(page: Page, from: [number, number], to: [number, number
   const box = (await preview.boundingBox())!;
   await page.mouse.move(box.x + box.width * from[0], box.y + box.height * from[1]);
   await page.mouse.down();
-  await page.mouse.move(box.x + box.width * ((from[0] + to[0]) / 2), box.y + box.height * ((from[1] + to[1]) / 2));
-  await page.mouse.move(box.x + box.width * to[0], box.y + box.height * to[1]);
+  await page.mouse.move(box.x + box.width * to[0], box.y + box.height * to[1], { steps: 8 });
   await page.mouse.up();
 }
 
