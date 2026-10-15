@@ -12,6 +12,7 @@ files never leave your computer: the app is technically blocked from using the n
 - PDF to PNG or JPG images
 - Add page numbers
 - Add a text watermark
+- Fill in PDF forms (text, checkboxes, dropdowns, radio buttons), optionally flattening them
 - View and remove metadata (author, title, dates)
 - Protect a PDF with a password (AES-256)
 - Unlock a PDF whose password you know (never guesses or cracks passwords)

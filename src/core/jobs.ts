@@ -2,7 +2,7 @@
 // own copy of each file; every job receives fresh copies that are
 // transferred (moved, not cloned) into the worker.
 import type { ImageInput, NumberPosition, PagePlan, PageSize } from '../engines/pdflib-ops';
-import type { CompressLevel, PdfInfo, ProtectOptions } from '../engines/mupdf-ops';
+import type { CompressLevel, FormField, FormValues, PdfInfo, ProtectOptions } from '../engines/mupdf-ops';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -28,10 +28,20 @@ export type MupdfJob =
   | { op: 'unlock'; file: Uint8Array; password: string }
   | { op: 'protect'; file: Uint8Array; opts: ProtectOptions }
   | { op: 'repair'; file: Uint8Array }
-  | { op: 'compress'; file: Uint8Array; level: CompressLevel };
+  | { op: 'compress'; file: Uint8Array; level: CompressLevel }
+  | { op: 'readForm'; file: Uint8Array }
+  | { op: 'fillForm'; file: Uint8Array; values: FormValues; flatten: boolean };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
-export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string>; info?: PdfInfo; repaired?: boolean; sizes?: { before: number; after: number; images: number } };
+export type JobOutput = {
+  files?: Uint8Array[];
+  count?: number;
+  meta?: Record<string, string>;
+  info?: PdfInfo;
+  repaired?: boolean;
+  sizes?: { before: number; after: number; images: number };
+  fields?: FormField[];
+};
 
 export type JobResult = ({ ok: true } & JobOutput & { id: string }) | { id: string; ok: false; error: string };

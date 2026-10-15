@@ -11,6 +11,7 @@ import UnlockTool from './UnlockTool.svelte';
 import ProtectTool from './ProtectTool.svelte';
 import RepairTool from './RepairTool.svelte';
 import CompressTool from './CompressTool.svelte';
+import FormsTool from './FormsTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -22,6 +23,7 @@ export const TOOLS: Tool[] = [
   { id: 'pdf-to-images', name: 'PDF to images', blurb: 'Save pages as PNG or JPG images.', group: 'Convert', component: PdfToImagesTool },
   { id: 'page-numbers', name: 'Page numbers', blurb: 'Stamp page numbers on every page.', group: 'Edit', component: PageNumbersTool },
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
+  { id: 'forms', name: 'Fill forms', blurb: 'Fill in a PDF form, and optionally flatten it so it can no longer be changed.', group: 'Edit', component: FormsTool },
   { id: 'protect', name: 'Protect PDF', blurb: 'Add a password (AES-256) so only people who know it can open the PDF.', group: 'Security', component: ProtectTool },
   { id: 'unlock', name: 'Unlock PDF', blurb: 'Remove a password you know, so the PDF opens freely.', group: 'Security', component: UnlockTool },
   { id: 'compress', name: 'Compress PDF', blurb: 'Make a PDF smaller, with a choice of how much image quality to keep.', group: 'Optimize', component: CompressTool },

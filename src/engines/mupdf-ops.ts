@@ -294,3 +294,172 @@ function replaceWithJpeg(
     for (const x of owned.reverse()) x.destroy();
   }
 }
+
+export type FormField = {
+  name: string;
+  /** The field's tooltip, or its name when it has none. Untrusted text from the PDF. */
+  label: string;
+  kind: 'text' | 'checkbox' | 'radio' | 'choice';
+  value: string;
+  checked: boolean;
+  options: string[];
+  multiline: boolean;
+  readOnly: boolean;
+  maxLen: number;
+};
+/** Field values to fill, as [field name, value] pairs. A list rather than an
+ * object, so a field named "__proto__" (or similar) is just another name. */
+export type FormValues = [string, string | boolean][];
+
+const MAX_FIELDS = 1000;
+const MAX_TEXT = 10_000;
+
+/** Lists the fillable fields (push buttons and signature fields are left out). */
+export function readForm(mupdf: Mupdf, bytes: Uint8Array): FormField[] {
+  const pdf = openForForm(mupdf, bytes);
+  try {
+    const fields = new Map<string, FormField>();
+    eachWidget(pdf, (widget, name) => {
+      const kind = kindOf(widget);
+      if (!kind) return;
+      const existing = fields.get(name);
+      if (!existing && fields.size >= MAX_FIELDS) {
+        throw new UserFacingError(`This form has more than ${MAX_FIELDS} fields, which is above ILMPDF's limit.`);
+      }
+      if (kind === 'radio') {
+        const field = existing ?? { ...base(widget, name, kind), options: [] as string[] };
+        const label = radioLabel(widget, field.options.length);
+        field.options.push(label);
+        if (isOn(widget)) field.value = label;
+        fields.set(name, field);
+        return;
+      }
+      if (existing) return; // the same field shown in several places
+      const field = base(widget, name, kind);
+      if (kind === 'checkbox') field.checked = isOn(widget);
+      if (kind === 'choice') field.options = widget.getOptions();
+      if (kind === 'text' || kind === 'choice') field.value = widget.getValue();
+      fields.set(name, field);
+    });
+    return [...fields.values()];
+  } finally {
+    pdf.destroy();
+  }
+}
+
+/**
+ * Fills fields by name and saves. With `flatten`, the filled fields are
+ * drawn into the pages and removed, so nobody can change them afterwards
+ * (comments and other annotations are kept as they are).
+ */
+export function fillForm(mupdf: Mupdf, bytes: Uint8Array, values: FormValues, flatten: boolean): Uint8Array {
+  const pdf = openForForm(mupdf, bytes);
+  try {
+    const wanted = new Map(values);
+    const radioIndex = new Map<string, number>();
+    eachWidget(pdf, (widget, name) => {
+      const kind = kindOf(widget);
+      if (!kind) return;
+      // Count every radio button, even read-only ones, so labels line up with readForm().
+      const index = kind === 'radio' ? (radioIndex.get(name) ?? 0) : 0;
+      if (kind === 'radio') radioIndex.set(name, index + 1);
+      if (!wanted.has(name) || widget.isReadOnly()) return;
+      const value = wanted.get(name);
+      if (kind === 'text' && typeof value === 'string') {
+        const limit = widget.getMaxLen() > 0 ? Math.min(widget.getMaxLen(), MAX_TEXT) : MAX_TEXT;
+        const text = value.slice(0, limit);
+        if (text !== widget.getValue()) widget.setTextValue(text);
+      } else if (kind === 'choice' && typeof value === 'string') {
+        if (value !== widget.getValue() && widget.getOptions().includes(value)) widget.setChoiceValue(value);
+      } else if (kind === 'checkbox' && typeof value === 'boolean') {
+        if (value !== isOn(widget)) widget.toggle();
+      } else if (kind === 'radio' && typeof value === 'string') {
+        if (value === radioLabel(widget, index) && !isOn(widget)) widget.toggle();
+      }
+      widget.update();
+    });
+    if (flatten) pdf.bake(false, true);
+    return new Uint8Array(pdf.saveToBuffer({ garbage: 'compact' }).asUint8Array());
+  } finally {
+    pdf.destroy();
+  }
+}
+
+function openForForm(mupdf: Mupdf, bytes: Uint8Array): MuPDF.PDFDocument {
+  const pdf = open(mupdf, bytes);
+  if (pdf.needsPassword()) {
+    pdf.destroy();
+    throw new UserFacingError('This PDF has a password. Unlock it first, then fill it in.');
+  }
+  // Form scripts never run in ILMPDF (this build of MuPDF has no JavaScript
+  // engine anyway); this keeps it that way if that ever changes.
+  pdf.disableJS();
+  return pdf;
+}
+
+function eachWidget(pdf: MuPDF.PDFDocument, fn: (widget: MuPDF.PDFWidget, name: string) => void) {
+  const pages = pdf.countPages();
+  if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+  for (let i = 0; i < pages; i++) {
+    const page = pdf.loadPage(i);
+    for (const widget of page.getWidgets()) fn(widget, widget.getName());
+    page.destroy();
+  }
+}
+
+function kindOf(widget: MuPDF.PDFWidget): FormField['kind'] | null {
+  switch (widget.getFieldType()) {
+    case 'text':
+      return 'text';
+    case 'checkbox':
+      return 'checkbox';
+    case 'radiobutton':
+      return 'radio';
+    case 'combobox':
+    case 'listbox':
+      return 'choice';
+    default:
+      return null; // push buttons and signatures
+  }
+}
+
+function base(widget: MuPDF.PDFWidget, name: string, kind: FormField['kind']): FormField {
+  return {
+    name,
+    label: widget.getLabel() || name,
+    kind,
+    value: '',
+    checked: false,
+    options: [],
+    multiline: kind === 'text' && widget.isMultiline(),
+    readOnly: widget.isReadOnly(),
+    maxLen: kind === 'text' ? widget.getMaxLen() : 0,
+  };
+}
+
+/** A checkbox or radio button is on when its appearance state isn't "Off". */
+function isOn(widget: MuPDF.PDFWidget): boolean {
+  const state = widget.getObject().get('AS');
+  return state.isName() && state.asName() !== 'Off';
+}
+
+/** The name of the "on" appearance of a checkbox or radio button. */
+function onState(widget: MuPDF.PDFWidget): string {
+  let on = '';
+  widget.getObject().get('AP', 'N').forEach((_value, key) => {
+    if (key !== 'Off' && !on) on = String(key);
+  });
+  return on;
+}
+
+/**
+ * What to call one radio button. Some PDF apps name each button's "on" state
+ * after the option ("Small"); others use its position ("0", "1") and list
+ * the names separately, which the field's options give back.
+ */
+function radioLabel(widget: MuPDF.PDFWidget, index: number): string {
+  const on = onState(widget);
+  const options = widget.getOptions();
+  if (/^\d+$/.test(on) && options[Number(on)] !== undefined) return options[Number(on)]!;
+  return on || options[index] || `Option ${index + 1}`;
+}

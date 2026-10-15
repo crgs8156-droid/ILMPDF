@@ -20,7 +20,7 @@ test.afterEach(async ({ page }) => {
 
 test('home page lists every tool', async ({ page }) => {
   await page.goto('/');
-  for (const id of ['merge', 'split', 'organize', 'images-to-pdf', 'pdf-to-images', 'page-numbers', 'watermark', 'metadata', 'unlock', 'protect', 'repair', 'compress']) {
+  for (const id of ['merge', 'split', 'organize', 'images-to-pdf', 'pdf-to-images', 'page-numbers', 'watermark', 'metadata', 'unlock', 'protect', 'repair', 'compress', 'forms']) {
     await expect(page.getByTestId(`open-${id}`)).toBeVisible();
   }
 });
