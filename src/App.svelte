@@ -1,101 +1,66 @@
 <script lang="ts">
-  import DropZone from './lib/DropZone.svelte';
   import SecurityBadge from './lib/SecurityBadge.svelte';
-  import { runInspectJob } from './core/orchestrator';
-  import { checkFileMeta, formatBytes, safeFileName } from './core/validate';
-  import { MAX_FILES } from './core/limits';
-  import { saveBytes } from './core/save';
+  import { TOOLS, type Tool } from './tools/registry';
 
-  type Entry = {
-    key: string;
-    name: string;
-    size: number;
-    status: 'checking' | 'ready' | 'rejected';
-    note: string;
-    buffer: ArrayBuffer | null;
-  };
+  // The current tool lives in the URL hash so Back/Forward work.
+  // Hash changes never leave the page or touch the network.
+  let current = $state<Tool | null>(fromHash());
 
-  let entries = $state<Entry[]>([]);
-
-  function update(key: string, patch: Partial<Entry>) {
-    entries = entries.map((e) => (e.key === key ? { ...e, ...patch } : e));
+  function fromHash(): Tool | null {
+    const id = location.hash.replace(/^#\/?/, '');
+    return TOOLS.find((t) => t.id === id) ?? null;
   }
 
-  async function addFiles(files: File[]) {
-    const room = MAX_FILES - entries.length;
-    for (const file of files.slice(0, Math.max(room, 0))) {
-      const key = crypto.randomUUID();
-      const meta = checkFileMeta(file.name, file.size);
-      entries = [
-        ...entries,
-        {
-          key,
-          name: file.name,
-          size: file.size,
-          status: meta.ok ? 'checking' : 'rejected',
-          note: meta.ok ? 'Checking…' : meta.reason,
-          buffer: null,
-        },
-      ];
-      if (!meta.ok) continue;
-      try {
-        const result = await runInspectJob(await file.arrayBuffer());
-        update(key, result.isPdf
-          ? { status: 'ready', note: 'Valid PDF header', buffer: result.buffer }
-          : { status: 'rejected', note: 'Not a real PDF (header missing)' });
-      } catch (err) {
-        update(key, { status: 'rejected', note: err instanceof Error ? err.message : 'Failed' });
-      }
-    }
-  }
+  $effect(() => {
+    const onHash = () => (current = fromHash());
+    addEventListener('hashchange', onHash);
+    return () => removeEventListener('hashchange', onHash);
+  });
 
-  function remove(key: string) {
-    // Dropping the reference lets the browser free the file's memory.
-    entries = entries.filter((e) => e.key !== key);
-  }
-
-  function save(entry: Entry) {
-    if (entry.buffer) saveBytes(entry.buffer, safeFileName(entry.name, '-ilmpdf'));
-  }
+  const groups = [...new Set(TOOLS.map((t) => t.group))];
 </script>
 
 <main>
   <header>
-    <h1>ILMPDF</h1>
+    <h1><a href="#/" class="home">ILMPDF</a></h1>
     <SecurityBadge />
   </header>
 
-  <DropZone onFiles={addFiles} />
-
-  {#if entries.length > 0}
-    <ul class="files" data-testid="file-list">
-      {#each entries as entry (entry.key)}
-        <li data-testid="file-row" data-status={entry.status}>
-          <div class="meta">
-            <span class="name">{entry.name}</span>
-            <span class="detail">{formatBytes(entry.size)} · {entry.note}</span>
-          </div>
-          <div class="actions">
-            {#if entry.status === 'ready'}
-              <button type="button" onclick={() => save(entry)} data-testid="save">Save copy</button>
-            {/if}
-            <button type="button" class="quiet" onclick={() => remove(entry.key)}>Remove</button>
-          </div>
-        </li>
-      {/each}
-    </ul>
+  {#if current}
+    {@const ToolView = current.component}
+    <section class="tool" data-testid="tool-{current.id}">
+      <div class="title">
+        <a href="#/" class="back" data-testid="back">← All tools</a>
+        <h2>{current.name}</h2>
+        <p class="muted">{current.blurb}</p>
+      </div>
+      {#key current.id}<ToolView />{/key}
+    </section>
+  {:else}
+    <p class="lead">Private PDF tools. Every file stays on this Mac; the network is blocked.</p>
+    {#each groups as group (group)}
+      <h2 class="group">{group}</h2>
+      <ul class="tools">
+        {#each TOOLS.filter((t) => t.group === group) as tool (tool.id)}
+          <li>
+            <a href="#/{tool.id}" data-testid="open-{tool.id}">
+              <strong>{tool.name}</strong>
+              <span>{tool.blurb}</span>
+            </a>
+          </li>
+        {/each}
+      </ul>
+    {/each}
   {/if}
-
-  <footer>Phase 0 shell. PDF tools arrive in Phase 1.</footer>
 </main>
 
 <style>
   main {
-    max-width: 760px;
+    max-width: 960px;
     margin: 0 auto;
     padding: 24px 16px 48px;
     display: grid;
-    gap: 20px;
+    gap: 16px;
   }
   header {
     display: flex;
@@ -108,62 +73,63 @@
     margin: 0;
     font-size: 24px;
   }
-  .files {
+  .home {
+    color: inherit;
+    text-decoration: none;
+  }
+  .lead {
+    margin: 0;
+    color: var(--muted);
+  }
+  .group {
+    margin: 8px 0 0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+  }
+  .tools {
     list-style: none;
     margin: 0;
     padding: 0;
     display: grid;
-    gap: 8px;
-  }
-  li {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
     gap: 12px;
-    padding: 12px 16px;
+  }
+  .tools a {
+    display: grid;
+    gap: 4px;
+    height: 100%;
+    padding: 14px 16px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-  li[data-status='rejected'] .detail {
-    color: var(--bad);
-  }
-  .meta {
-    display: grid;
-    min-width: 0;
-  }
-  .name {
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .detail {
-    color: var(--muted);
-    font-size: 13px;
-  }
-  .actions {
-    display: flex;
-    gap: 8px;
-    flex-shrink: 0;
-  }
-  button {
-    font: inherit;
-    font-size: 14px;
-    padding: 6px 12px;
-    border-radius: 8px;
-    border: 1px solid var(--accent);
-    background: var(--accent);
-    color: #fff;
-    cursor: pointer;
-  }
-  button.quiet {
-    background: transparent;
+    border-radius: 12px;
     color: var(--text);
-    border-color: var(--border);
+    text-decoration: none;
   }
-  footer {
+  .tools a:hover,
+  .tools a:focus-visible {
+    border-color: var(--accent);
+    outline: none;
+  }
+  .tools span {
     color: var(--muted);
     font-size: 13px;
+  }
+  .tool {
+    display: grid;
+    gap: 14px;
+  }
+  .title h2 {
+    margin: 4px 0 0;
+    font-size: 22px;
+  }
+  .title p {
+    margin: 2px 0 0;
+  }
+  .back {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 14px;
   }
 </style>

@@ -3,7 +3,18 @@
 A private PDF toolkit for your Mac. Everything runs inside your browser, and
 files never leave your computer: the app is technically blocked from using the network.
 
-**Status:** Phase 0, a secured app shell. PDF tools come in Phase 1.
+**Status:** Phase 1. Everyday page tools work offline:
+
+- Merge PDFs, in the order you choose
+- Split by page ranges or every N pages
+- Organize pages with thumbnails: reorder, rotate, delete, extract
+- Images (JPG, PNG, and other formats Safari can open, such as WebP) to PDF
+- PDF to PNG or JPG images
+- Add page numbers
+- Add a text watermark
+- View and remove metadata (author, title, dates)
+
+Password-protected PDFs are refused for now; unlocking arrives in Phase 2.
 
 ## First run on your Mac
 

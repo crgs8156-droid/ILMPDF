@@ -1,7 +1,8 @@
 // Saving works through a normal download, which Safari supports everywhere.
 // The object URL is revoked right after the click so the bytes are released.
-export function saveBytes(bytes: ArrayBuffer, fileName: string): void {
-  const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+export function saveBytes(bytes: Uint8Array | Blob, fileName: string, type = 'application/pdf'): void {
+  const blob = bytes instanceof Blob ? bytes : new Blob([bytes as Uint8Array<ArrayBuffer>], { type });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
   a.download = fileName;
@@ -9,5 +10,5 @@ export function saveBytes(bytes: ArrayBuffer, fileName: string): void {
   document.body.append(a);
   a.click();
   a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 0);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

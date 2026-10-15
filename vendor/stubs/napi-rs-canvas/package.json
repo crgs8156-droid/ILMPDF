@@ -1,0 +1,7 @@
+{
+  "name": "@napi-rs/canvas",
+  "version": "0.0.0-ilmpdf-stub",
+  "private": true,
+  "description": "Local empty stand-in. PDF.js only uses @napi-rs/canvas when running under Node.js; ILMPDF runs PDF.js in the browser, so this native binary is never downloaded.",
+  "main": "index.js"
+}
