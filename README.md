@@ -16,6 +16,7 @@ files never leave your computer: the app is technically blocked from using the n
 - Protect a PDF with a password (AES-256)
 - Unlock a PDF whose password you know (never guesses or cracks passwords)
 - Repair a damaged PDF (rebuilds its internal index; keeps any restrictions)
+- Compress a PDF at three levels: Light (no quality loss), Recommended (JPEG images up to 150 dpi), Strong (up to 100 dpi)
 
 Other tools refuse password-protected PDFs; unlock them first.
 

@@ -154,3 +154,143 @@ export function repair(mupdf: Mupdf, bytes: Uint8Array): RepairResult {
     pdf.destroy();
   }
 }
+
+export type CompressLevel = 'light' | 'recommended' | 'strong';
+export type CompressResult = { file: Uint8Array; before: number; after: number; images: number };
+
+// light: lossless only. The other two also re-save photos as JPEG and shrink
+// any image sharper than `dpi` would need at the size of the largest page.
+const LEVELS: Record<CompressLevel, { dpi: number; quality: number } | null> = {
+  light: null,
+  recommended: { dpi: 150, quality: 75 },
+  strong: { dpi: 100, quality: 50 },
+};
+
+/**
+ * Makes a PDF smaller. Every level rewrites the file without unused or
+ * duplicate objects and packs small objects into compressed object streams.
+ * If the result is not smaller, the original bytes are returned unchanged.
+ */
+export function compress(mupdf: Mupdf, bytes: Uint8Array, level: CompressLevel): CompressResult {
+  const pdf = open(mupdf, bytes);
+  try {
+    if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then compress it.');
+    const pages = pdf.countPages();
+    if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    const settings = LEVELS[level];
+    const images = settings ? recompressImages(mupdf, pdf, largestPageInches(pdf, pages) * settings.dpi, settings.quality) : 0;
+    const out = pdf.saveToBuffer({
+      garbage: 'deduplicate',
+      compress: 'yes',
+      'compress-fonts': 'yes',
+      'compress-images': 'yes',
+      objstms: 'yes',
+    });
+    const file = new Uint8Array(out.asUint8Array());
+    if (file.length >= bytes.length) return { file: bytes, before: bytes.length, after: bytes.length, images: 0 };
+    return { file, before: bytes.length, after: file.length, images };
+  } finally {
+    pdf.destroy();
+  }
+}
+
+function largestPageInches(pdf: MuPDF.PDFDocument, pages: number): number {
+  let largest = 0;
+  for (let i = 0; i < pages; i++) {
+    const page = pdf.loadPage(i);
+    const [x0, y0, x1, y1] = page.getBounds();
+    largest = Math.max(largest, Math.abs(x1 - x0) / 72, Math.abs(y1 - y0) / 72);
+    page.destroy();
+  }
+  return largest || 11.7; // A4's long side, if no page has a size
+}
+
+const MIN_PIXELS = 128 * 128; // icons and logos: not worth touching
+const MAX_PIXELS = 60_000_000; // above this, decoding could run out of memory
+
+/**
+ * Re-saves each suitable image as JPEG, shrinking it to at most `maxSide`
+ * pixels on its long side. Returns how many images were replaced. An image is
+ * left alone when it is a transparency mask, is black-and-white (1 bit), uses
+ * a colour-key mask, or when JPEG would not make it clearly smaller.
+ */
+function recompressImages(mupdf: Mupdf, pdf: MuPDF.PDFDocument, maxSide: number, quality: number): number {
+  const isImage = (obj: MuPDF.PDFObject) => obj.isStream() && obj.get('Subtype').toString() === '/Image';
+  const masks = new Set<number>();
+  for (let i = 1; i < pdf.countObjects(); i++) {
+    const obj = pdf.newIndirect(i);
+    if (!isImage(obj)) continue;
+    for (const key of ['SMask', 'Mask']) {
+      const ref = obj.get(key);
+      if (ref.isIndirect()) masks.add(ref.asIndirect());
+    }
+  }
+  let replaced = 0;
+  for (let i = 1; i < pdf.countObjects(); i++) {
+    const obj = pdf.newIndirect(i);
+    if (!isImage(obj) || masks.has(i)) continue;
+    if (obj.get('ImageMask').valueOf() === true || obj.get('Mask').isArray()) continue;
+    if (obj.get('BitsPerComponent').valueOf() === 1) continue;
+    const w = Number(obj.get('Width').valueOf());
+    const h = Number(obj.get('Height').valueOf());
+    if (!(w > 0 && h > 0) || w * h < MIN_PIXELS || w * h > MAX_PIXELS) continue;
+    try {
+      if (replaceWithJpeg(mupdf, pdf, obj, w, h, maxSide, quality)) replaced++;
+    } catch {
+      // An image MuPDF cannot decode stays exactly as it was.
+    }
+  }
+  return replaced;
+}
+
+function replaceWithJpeg(
+  mupdf: Mupdf,
+  pdf: MuPDF.PDFDocument,
+  obj: MuPDF.PDFObject,
+  w: number,
+  h: number,
+  maxSide: number,
+  quality: number,
+): boolean {
+  const original = obj.readRawStream().getLength();
+  // Pixel data lives in WebAssembly memory, so free each piece when done
+  // rather than waiting for the job to end.
+  const owned: { destroy(): void }[] = [];
+  const keep = <T extends { destroy(): void }>(x: T): T => (owned.push(x), x);
+  try {
+    const image = keep(pdf.loadImage(obj));
+    const decoded = keep(image.toPixmap());
+    const gray = decoded.getNumberOfComponents() === 1;
+    const space = gray ? mupdf.ColorSpace.DeviceGray : mupdf.ColorSpace.DeviceRGB;
+    // Colour images (including CMYK and indexed ones) become plain RGB.
+    const sameSpace = decoded.getColorSpace()?.getName() === space.getName() && !decoded.getAlpha();
+    const pixels = sameSpace ? decoded : keep(decoded.convertToColorSpace(space, false));
+    const scale = Math.min(1, maxSide / Math.max(w, h));
+    let target = pixels;
+    if (scale < 1) {
+      // Draw the decoded pixels (without any transparency mask, which stays a
+      // separate object) into a smaller canvas; MuPDF smooths while scaling.
+      const tw = Math.max(1, Math.round(w * scale));
+      const th = Math.max(1, Math.round(h * scale));
+      target = keep(new mupdf.Pixmap(space, [0, 0, tw, th], false));
+      target.clear(255);
+      const device = keep(new mupdf.DrawDevice(mupdf.Matrix.identity, target));
+      device.fillImage(keep(new mupdf.Image(pixels)), [tw, 0, 0, th, 0, 0], 1);
+      device.close();
+    }
+    const jpeg = target.asJPEG(quality);
+    if (jpeg.length > original * 0.9) return false;
+    obj.writeRawStream(jpeg);
+    obj.put('Filter', pdf.newName('DCTDecode'));
+    obj.put('Width', target.getWidth());
+    obj.put('Height', target.getHeight());
+    obj.put('BitsPerComponent', 8);
+    obj.put('ColorSpace', pdf.newName(gray ? 'DeviceGray' : 'DeviceRGB'));
+    // The decoded pixels already have these applied.
+    obj.delete('DecodeParms');
+    obj.delete('Decode');
+    return true;
+  } finally {
+    for (const x of owned.reverse()) x.destroy();
+  }
+}

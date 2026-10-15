@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
-import { inspect, open, protect, repair, unlock } from '../../src/engines/mupdf-ops';
+import { compress, inspect, open, protect, repair, unlock } from '../../src/engines/mupdf-ops';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
@@ -142,5 +142,64 @@ describe('repair', async () => {
   it('keeps the restrictions on a restricted file', () => {
     const result = repair(mupdf, get('18-restricted-owner-password-is-owner-test.pdf'));
     expect(inspect(mupdf, result.file)).toMatchObject({ encrypted: true, needsPassword: false });
+  });
+});
+
+describe('compress', async () => {
+  const { PDFDocument } = await import('pdf-lib');
+  const files: { name: string; bytes: Uint8Array }[] = await buildTestFiles();
+  const get = (name: string) => files.find((f) => f.name === name)!.bytes;
+
+  // Renders page 1 small and returns its RGB pixels, to check that a
+  // compressed page still looks the same (and is not flipped or blank).
+  const look = (bytes: Uint8Array) => {
+    const doc = mupdf.Document.openDocument(bytes, 'application/pdf');
+    const pix = doc.loadPage(0).toPixmap(mupdf.Matrix.scale(0.25, 0.25), mupdf.ColorSpace.DeviceRGB, false);
+    const pixels = Array.from(pix.getPixels());
+    doc.destroy();
+    return pixels;
+  };
+  const difference = (a: number[], b: number[]) => a.reduce((sum, v, i) => sum + Math.abs(v - b[i]!), 0) / a.length;
+
+  it('makes a scanned-style file much smaller at every level, more so at stronger ones', () => {
+    const scanned = get('17-scanned-heavy.pdf');
+    const light = compress(mupdf, scanned, 'light');
+    const recommended = compress(mupdf, scanned, 'recommended');
+    const strong = compress(mupdf, scanned, 'strong');
+    expect(light.images).toBe(0);
+    expect(recommended).toMatchObject({ before: scanned.length, images: 3 });
+    expect(recommended.after).toBeLessThan(scanned.length * 0.5);
+    expect(strong.after).toBeLessThan(recommended.after);
+    expect(strong.after).toBeLessThan(scanned.length * 0.15);
+    expect(inspect(mupdf, strong.file).pages).toBe(3);
+  });
+
+  it('keeps pages looking the same (images upright, not blank)', () => {
+    for (const name of ['09-large-images.pdf', '17-scanned-heavy.pdf']) {
+      const original = get(name);
+      const out = compress(mupdf, original, 'recommended').file;
+      expect(out).not.toBe(original);
+      expect(difference(look(original), look(out))).toBeLessThan(8);
+    }
+  });
+
+  it('returns the original bytes when it cannot make a file smaller', () => {
+    const tiny = makePdf(1);
+    const result = compress(mupdf, tiny, 'strong');
+    expect(result.file).toBe(tiny);
+    expect(result.after).toBe(result.before);
+  });
+
+  it('keeps form fields working', async () => {
+    const form = get('15-form.pdf');
+    const out = compress(mupdf, form, 'strong').file;
+    const before = (await PDFDocument.load(form)).getForm().getFields().length;
+    expect((await PDFDocument.load(out)).getForm().getFields().length).toBe(before);
+  });
+
+  it('keeps restrictions, and asks for password files to be unlocked first', () => {
+    const restricted = compress(mupdf, get('18-restricted-owner-password-is-owner-test.pdf'), 'recommended');
+    expect(inspect(mupdf, restricted.file)).toMatchObject({ encrypted: true, needsPassword: false });
+    expect(() => compress(mupdf, get('14-password-aes256-is-test.pdf'), 'light')).toThrow('Unlock it first');
   });
 });
