@@ -14,6 +14,7 @@ files never leave your computer: the app is technically blocked from using the n
 - Add a text watermark
 - Fill in PDF forms (text, checkboxes, dropdowns, radio buttons), optionally flattening them
 - Sign a PDF with a drawn or image signature, placed by clicking on the page (a picture of a signature, not a certificate signature)
+- Crop pages by drawing the area to keep, on every page or just one (hidden parts stay in the file; redaction comes later)
 - View and remove metadata (author, title, dates)
 - Protect a PDF with a password (AES-256)
 - Unlock a PDF whose password you know (never guesses or cracks passwords)

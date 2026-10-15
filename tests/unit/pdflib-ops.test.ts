@@ -170,3 +170,50 @@ describe('addSignature', async () => {
     await expect(addSignature(makePdf(1), { bytes: new Uint8Array([1, 2, 3]), kind: 'png' }, [{ page: 0, x: 0, y: 0, width: 0.3 }])).rejects.toThrow('could not be read');
   });
 });
+
+describe('cropPages', async () => {
+  const mupdf = await import('mupdf');
+  const { cropPages } = await import('../../src/engines/pdflib-ops');
+
+  // A page filled with a 2x2 grid of colours, so every part of it looks different.
+  const grid = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 2, 2], false);
+  grid.getPixels().set([255, 0, 0, 0, 160, 0, 0, 0, 255, 0, 0, 0]);
+  const gridPng = grid.asPNG();
+  async function gridPage(rotation: number) {
+    const doc = await PDFDocument.create();
+    const page = doc.addPage([400, 600]);
+    page.drawImage(await doc.embedPng(gridPng), { x: 0, y: 0, width: 400, height: 600 });
+    page.setRotation(degrees(rotation));
+    return doc.save();
+  }
+  const render = (bytes: Uint8Array) => {
+    const doc = mupdf.Document.openDocument(bytes, 'application/pdf');
+    const shot = doc.loadPage(0).toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, false);
+    const [w, h, px] = [shot.getWidth(), shot.getHeight(), Array.from(shot.getPixels())];
+    doc.destroy();
+    return { w, h, at: (fx: number, fy: number) => px.slice((Math.floor(fy * h) * w + Math.floor(fx * w)) * 3).slice(0, 3) };
+  };
+
+  for (const rotation of [0, 90, 180, 270]) {
+    it(`keeps exactly the chosen area on a page rotated ${rotation}°`, async () => {
+      const original = await gridPage(rotation);
+      const box = { x: 0.3, y: 0.2, width: 0.6, height: 0.5 };
+      const before = render(original);
+      const after = render(await cropPages(original, box, []));
+      expect(after.w).toBeCloseTo(before.w * box.width, -1);
+      expect(after.h).toBeCloseTo(before.h * box.height, -1);
+      // Points inside the crop show what was at the same spot before.
+      for (const [fx, fy] of [[0.1, 0.1], [0.9, 0.1], [0.1, 0.9], [0.9, 0.9]] as const) {
+        expect(after.at(fx, fy)).toEqual(before.at(box.x + fx * box.width, box.y + fy * box.height));
+      }
+    });
+  }
+
+  it('crops only the chosen pages, and refuses a tiny area', async () => {
+    const out = await cropPages(makePdf(3), { x: 0, y: 0, width: 0.5, height: 0.5 }, [1]);
+    const sizes = (await PDFDocument.load(out)).getPages().map((p) => p.getCropBox().width);
+    // makePdf's page i is 200 + i points wide.
+    expect(sizes).toEqual([200, 100.5, 202]);
+    await expect(cropPages(makePdf(1), { x: 0.5, y: 0.5, width: 0.01, height: 0.3 }, [])).rejects.toThrow('too small');
+  });
+});
