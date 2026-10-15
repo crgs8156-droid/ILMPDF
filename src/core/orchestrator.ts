@@ -58,6 +58,7 @@ function transferables(job: PdfJob | MupdfJob): ArrayBuffer[] {
   if ('file' in job) arrays.push(job.file);
   if ('files' in job) arrays.push(...job.files);
   if ('images' in job) arrays.push(...job.images.map((i) => i.bytes));
+  if ('image' in job) arrays.push(job.image.bytes);
   return [...new Set(arrays.map((a) => a.buffer as ArrayBuffer))];
 }
 

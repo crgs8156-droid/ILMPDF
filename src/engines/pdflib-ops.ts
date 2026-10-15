@@ -230,3 +230,50 @@ export async function stripMetadata(bytes: Uint8Array): Promise<Uint8Array> {
 function clamp(n: number, lo: number, hi: number): number {
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : lo;
 }
+
+/**
+ * Where to put a signature, as fractions of the page as it is shown on
+ * screen (after any page rotation): `x`, `y` are the box's top-left corner
+ * and `width` its width. The height follows from the image's shape.
+ */
+export type SignaturePlacement = { page: number; x: number; y: number; width: number };
+
+/**
+ * Stamps a signature image onto pages. This is a picture of a signature, not
+ * a cryptographic (certificate) signature.
+ */
+export async function addSignature(bytes: Uint8Array, image: ImageInput, placements: SignaturePlacement[]): Promise<Uint8Array> {
+  if (placements.length === 0) throw new UserFacingError('Choose where to put the signature.');
+  const doc = await load(bytes);
+  let embedded;
+  try {
+    embedded = image.kind === 'png' ? await doc.embedPng(image.bytes) : await doc.embedJpg(image.bytes);
+  } catch {
+    throw new UserFacingError('The signature image could not be read. Try a PNG or JPG file.');
+  }
+  const aspect = embedded.height / embedded.width;
+  const pages = doc.getPages();
+  for (const place of placements) {
+    const page = pages[place.page];
+    if (!page) throw new UserFacingError(`This PDF has no page ${place.page + 1}.`);
+    const { x: bx, y: by, width: pw, height: ph } = page.getCropBox();
+    const turn = (((page.getRotation().angle % 360) + 360) % 360) as 0 | 90 | 180 | 270;
+    const sideways = turn === 90 || turn === 270;
+    // Size of the page as shown on screen.
+    const shownW = sideways ? ph : pw;
+    const shownH = sideways ? pw : ph;
+    const w = clamp(place.width, 0.02, 1) * shownW;
+    const h = w * aspect;
+    const left = clamp(place.x, 0, 1) * shownW;
+    const top = clamp(place.y, 0, 1) * shownH;
+    // The image is drawn from its bottom-left corner as seen on screen. Turn
+    // that on-screen point (u right, v down) into page coordinates, which do
+    // not rotate with the page and start at the bottom-left.
+    const [u, v] = [left, top + h];
+    const [px, py] =
+      turn === 0 ? [u, ph - v] : turn === 90 ? [v, u] : turn === 180 ? [pw - u, v] : [pw - v, ph - u];
+    // Rotate the image back by the page's turn so it looks upright on screen.
+    page.drawImage(embedded, { x: bx + px, y: by + py, width: w, height: h, rotate: degrees(turn) });
+  }
+  return save(doc);
+}

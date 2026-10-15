@@ -26,6 +26,8 @@ async function run(job: PdfJob): Promise<JobOutput> {
       return { meta: await ops.readMetadata(job.file) };
     case 'stripMetadata':
       return { files: [await ops.stripMetadata(job.file)] };
+    case 'sign':
+      return { files: [await ops.addSignature(job.file, job.image, job.placements)] };
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
+import { degrees, PDFDocument } from 'pdf-lib';
 import {
   addPageNumbers,
   addWatermark,
@@ -121,5 +121,52 @@ describe('hostile input', () => {
   });
   it('rejects documents above the page limit', async () => {
     await expect(pageCount(makePdf(5001))).rejects.toThrow(/more than 5000 pages/);
+  });
+});
+
+describe('addSignature', async () => {
+  const mupdf = await import('mupdf');
+  const { addSignature } = await import('../../src/engines/pdflib-ops');
+
+  // A 40x20 test "signature": top half red, bottom half blue, so the test can
+  // tell where it landed and that it is the right way up.
+  const pix = new mupdf.Pixmap(mupdf.ColorSpace.DeviceRGB, [0, 0, 40, 20], false);
+  const px = pix.getPixels();
+  for (let i = 0; i < 40 * 20; i++) px.set(i < 40 * 10 ? [255, 0, 0] : [0, 0, 255], i * 3);
+  const sig = { bytes: pix.asPNG(), kind: 'png' as const };
+
+  // Colour at a point given as fractions of the page as shown on screen.
+  const colourAt = (bytes: Uint8Array, page: number, fx: number, fy: number) => {
+    const doc = mupdf.Document.openDocument(bytes, 'application/pdf');
+    const shot = doc.loadPage(page).toPixmap(mupdf.Matrix.identity, mupdf.ColorSpace.DeviceRGB, false);
+    const [w, h] = [shot.getWidth(), shot.getHeight()];
+    const i = (Math.floor(fy * h) * w + Math.floor(fx * w)) * 3;
+    const [r, g, b] = Array.from(shot.getPixels().slice(i, i + 3));
+    doc.destroy();
+    return r! > 200 && g! < 60 && b! < 60 ? 'red' : b! > 200 && r! < 60 && g! < 60 ? 'blue' : r! > 240 && g! > 240 && b! > 240 ? 'white' : 'other';
+  };
+
+  for (const rotation of [0, 90, 180, 270]) {
+    it(`lands where it was placed, upright, on a page rotated ${rotation}°`, async () => {
+      const doc = await PDFDocument.create();
+      doc.addPage([400, 600]).setRotation(degrees(rotation));
+      // Box from 50% to 90% across, its top at 20% down: 0.4 wide, half as tall.
+      const out = await addSignature(await doc.save(), sig, [{ page: 0, x: 0.5, y: 0.2, width: 0.4 }]);
+      const shownW = rotation % 180 ? 600 : 400;
+      const shownH = rotation % 180 ? 400 : 600;
+      const boxH = (0.4 * shownW) / 2 / shownH; // box height as a fraction of the shown page
+      expect(colourAt(out, 0, 0.7, 0.2 + boxH * 0.25)).toBe('red');
+      expect(colourAt(out, 0, 0.7, 0.2 + boxH * 0.75)).toBe('blue');
+      expect(colourAt(out, 0, 0.3, 0.2 + boxH * 0.5)).toBe('white');
+    });
+  }
+
+  it('can sign several pages and refuses pages that do not exist', async () => {
+    const out = await addSignature(makePdf(3), sig, [0, 2].map((page) => ({ page, x: 0.1, y: 0.1, width: 0.3 })));
+    expect(colourAt(out, 0, 0.2, 0.11)).toBe('red');
+    expect(colourAt(out, 1, 0.2, 0.11)).toBe('white');
+    expect(colourAt(out, 2, 0.2, 0.11)).toBe('red');
+    await expect(addSignature(makePdf(1), sig, [{ page: 5, x: 0, y: 0, width: 0.3 }])).rejects.toThrow('no page 6');
+    await expect(addSignature(makePdf(1), { bytes: new Uint8Array([1, 2, 3]), kind: 'png' }, [{ page: 0, x: 0, y: 0, width: 0.3 }])).rejects.toThrow('could not be read');
   });
 });
