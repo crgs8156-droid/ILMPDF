@@ -10,6 +10,7 @@ import MetadataTool from './MetadataTool.svelte';
 import UnlockTool from './UnlockTool.svelte';
 import ProtectTool from './ProtectTool.svelte';
 import RepairTool from './RepairTool.svelte';
+import CompressTool from './CompressTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -23,6 +24,7 @@ export const TOOLS: Tool[] = [
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
   { id: 'protect', name: 'Protect PDF', blurb: 'Add a password (AES-256) so only people who know it can open the PDF.', group: 'Security', component: ProtectTool },
   { id: 'unlock', name: 'Unlock PDF', blurb: 'Remove a password you know, so the PDF opens freely.', group: 'Security', component: UnlockTool },
+  { id: 'compress', name: 'Compress PDF', blurb: 'Make a PDF smaller, with a choice of how much image quality to keep.', group: 'Optimize', component: CompressTool },
   { id: 'repair', name: 'Repair PDF', blurb: 'Rebuild a damaged PDF that will not open properly.', group: 'Optimize', component: RepairTool },
   { id: 'metadata', name: 'Remove metadata', blurb: 'See and remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
 ];

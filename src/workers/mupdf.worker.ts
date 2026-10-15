@@ -42,6 +42,10 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { file, pages, repaired } = ops.repair(mupdf, job.file);
       return { files: [file], count: pages, repaired };
     }
+    case 'compress': {
+      const { file, before, after, images } = ops.compress(mupdf, job.file, job.level);
+      return { files: [file], sizes: { before, after, images } };
+    }
   }
 }
 

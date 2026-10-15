@@ -2,7 +2,7 @@
 // own copy of each file; every job receives fresh copies that are
 // transferred (moved, not cloned) into the worker.
 import type { ImageInput, NumberPosition, PagePlan, PageSize } from '../engines/pdflib-ops';
-import type { PdfInfo, ProtectOptions } from '../engines/mupdf-ops';
+import type { CompressLevel, PdfInfo, ProtectOptions } from '../engines/mupdf-ops';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -27,10 +27,11 @@ export type MupdfJob =
   // The password is only ever held in memory for this one job.
   | { op: 'unlock'; file: Uint8Array; password: string }
   | { op: 'protect'; file: Uint8Array; opts: ProtectOptions }
-  | { op: 'repair'; file: Uint8Array };
+  | { op: 'repair'; file: Uint8Array }
+  | { op: 'compress'; file: Uint8Array; level: CompressLevel };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
-export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string>; info?: PdfInfo; repaired?: boolean };
+export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string>; info?: PdfInfo; repaired?: boolean; sizes?: { before: number; after: number; images: number } };
 
 export type JobResult = ({ ok: true } & JobOutput & { id: string }) | { id: string; ok: false; error: string };
