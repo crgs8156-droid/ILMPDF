@@ -1,4 +1,5 @@
 /// <reference types="vitest/config" />
+import { readFile } from 'node:fs/promises';
 import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { PROD_CSP, devHeaders, prodHeaders } from './security-headers.ts';
@@ -27,8 +28,23 @@ function cspMetaTag(): Plugin {
   };
 }
 
+// Turns `file?b64` imports into a JS module holding the file as base64.
+// Used for PDF.js fonts, character maps and decoders, so the app never has
+// to fetch them (the CSP blocks all fetches).
+function inlineBinary(): Plugin {
+  return {
+    name: 'ilmpdf-inline-binary',
+    enforce: 'pre',
+    async load(id) {
+      if (!id.endsWith('?b64')) return null;
+      const data = await readFile(id.slice(0, -'?b64'.length));
+      return `export default ${JSON.stringify(data.toString('base64'))};`;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [svelte(), cspMetaTag()],
+  plugins: [inlineBinary(), svelte(), cspMetaTag()],
   server: {
     host: HOST,
     port: DEV_PORT,
@@ -46,6 +62,8 @@ export default defineConfig({
     sourcemap: false,
     // Keep everything as files so the strict CSP never needs data: scripts.
     assetsInlineLimit: 0,
+    // PDF.js's own worker is ~1.3 MB; it loads only when a tool needs previews.
+    chunkSizeWarningLimit: 1500,
   },
   worker: {
     format: 'es',
