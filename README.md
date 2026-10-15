@@ -38,6 +38,17 @@ npm run dev       # http://127.0.0.1:5173 with hot reload
 npm run verify    # type check, unit tests, build, browser tests
 ```
 
+### Test files
+
+```sh
+npm run make-test-pdfs
+```
+
+This writes 16 generated test files into `test-pdfs/`: PDFs with 1 to 300 pages,
+mixed sizes, rotated pages, metadata, a password-protected file (password `test`),
+a damaged file, an odd file name and a few PNG images. `test-pdfs/README.md` says
+what each one is for. They are never committed. Use these instead of real documents.
+
 Browser tests need Playwright's browsers once: `npx playwright install webkit chromium`.
 
 See `CLAUDE.md` for the security rules and `docs/decisions/` for why things are the way they are.
