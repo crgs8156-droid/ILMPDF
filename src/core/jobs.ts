@@ -26,10 +26,11 @@ export type MupdfJob =
   | { op: 'inspect'; file: Uint8Array }
   // The password is only ever held in memory for this one job.
   | { op: 'unlock'; file: Uint8Array; password: string }
-  | { op: 'protect'; file: Uint8Array; opts: ProtectOptions };
+  | { op: 'protect'; file: Uint8Array; opts: ProtectOptions }
+  | { op: 'repair'; file: Uint8Array };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
-export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string>; info?: PdfInfo };
+export type JobOutput = { files?: Uint8Array[]; count?: number; meta?: Record<string, string>; info?: PdfInfo; repaired?: boolean };
 
 export type JobResult = ({ ok: true } & JobOutput & { id: string }) | { id: string; ok: false; error: string };

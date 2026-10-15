@@ -15,6 +15,7 @@ files never leave your computer: the app is technically blocked from using the n
 - View and remove metadata (author, title, dates)
 - Protect a PDF with a password (AES-256)
 - Unlock a PDF whose password you know (never guesses or cracks passwords)
+- Repair a damaged PDF (rebuilds its internal index; keeps any restrictions)
 
 Other tools refuse password-protected PDFs; unlock them first.
 
