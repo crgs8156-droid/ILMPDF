@@ -13,6 +13,28 @@ test('serves the strict security headers', async ({ page }) => {
   expect(h['x-content-type-options']).toBe('nosniff');
 });
 
+// Safari refuses to start a worker whose revalidated (304) reply lacks COEP.
+test('security headers are on 304 Not Modified replies too', async ({ request }) => {
+  const first = await request.get('/');
+  const etag = first.headers()['etag'];
+  expect(etag).toBeTruthy();
+  const again = await request.get('/', { headers: { 'If-None-Match': etag! } });
+  expect(again.status()).toBe(304);
+  expect(again.headers()['cross-origin-embedder-policy']).toBe('require-corp');
+  expect(again.headers()['cross-origin-resource-policy']).toBe('same-origin');
+  expect(again.headers()['content-security-policy']).toContain("connect-src 'none'");
+});
+
+// Each job gets a fresh worker; several jobs in a row must all work.
+test('several jobs in a row each get a working worker', async ({ page }) => {
+  await openTool(page, 'page-numbers');
+  for (const name of ['one.pdf', 'two.pdf', 'three.pdf']) {
+    await addPdf(page, name, makePdf(2));
+    await expect(page.getByTestId('loaded-file')).toContainText(name);
+    await page.getByRole('button', { name: 'Choose another file' }).click();
+  }
+});
+
 test('page is cross-origin isolated and the network is blocked', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByTestId('network-status')).toHaveText('Network blocked');

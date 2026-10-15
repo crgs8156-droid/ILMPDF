@@ -43,19 +43,37 @@ function inlineBinary(): Plugin {
   };
 }
 
+// Vite's own `headers` option skips "304 Not Modified" replies. Safari then
+// treats a revalidated worker script as having no COEP header and refuses to
+// start it, so the second PDF job of a session hangs. Setting the headers
+// in a middleware puts them on every reply, 304s included.
+function securityHeaders(): Plugin {
+  const apply = (headers: Record<string, string>) => (_req: unknown, res: { setHeader(k: string, v: string): void }, next: () => void) => {
+    for (const [key, value] of Object.entries(headers)) res.setHeader(key, value);
+    next();
+  };
+  return {
+    name: 'ilmpdf-security-headers',
+    configureServer(server) {
+      server.middlewares.use(apply(devHeaders(HOST, DEV_PORT)));
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(apply(prodHeaders()));
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [inlineBinary(), svelte(), cspMetaTag()],
+  plugins: [securityHeaders(), inlineBinary(), svelte(), cspMetaTag()],
   server: {
     host: HOST,
     port: DEV_PORT,
     strictPort: true,
-    headers: devHeaders(HOST, DEV_PORT),
   },
   preview: {
     host: HOST,
     port: PREVIEW_PORT,
     strictPort: true,
-    headers: prodHeaders(),
   },
   build: {
     target: 'es2022',
