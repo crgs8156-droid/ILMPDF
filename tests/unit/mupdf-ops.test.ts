@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
-import { compress, inspect, open, protect, repair, unlock } from '../../src/engines/mupdf-ops';
+import { compress, fillForm, inspect, open, protect, readForm, repair, unlock } from '../../src/engines/mupdf-ops';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
@@ -201,5 +201,73 @@ describe('compress', async () => {
     const restricted = compress(mupdf, get('18-restricted-owner-password-is-owner-test.pdf'), 'recommended');
     expect(inspect(mupdf, restricted.file)).toMatchObject({ encrypted: true, needsPassword: false });
     expect(() => compress(mupdf, get('14-password-aes256-is-test.pdf'), 'light')).toThrow('Unlock it first');
+  });
+});
+
+describe('forms', async () => {
+  const { PDFDocument } = await import('pdf-lib');
+  const files: { name: string; bytes: Uint8Array }[] = await buildTestFiles();
+  const form = files.find((f) => f.name === '15-form.pdf')!.bytes;
+  const pageText = (bytes: Uint8Array) => {
+    const doc = mupdf.Document.openDocument(bytes, 'application/pdf');
+    const text = doc.loadPage(0).toStructuredText('').asText();
+    doc.destroy();
+    return text;
+  };
+  const filled: [string, string | boolean][] = [
+    ['full_name', 'Ada Lovelace'],
+    ['email', 'ada@example.com'],
+    ['subscribe', true],
+    ['plan', 'Pro'],
+    ['size', 'Large'],
+  ];
+
+  it('lists every field with its kind and options', () => {
+    const fields = readForm(mupdf, form);
+    expect(fields.map((f) => [f.name, f.kind])).toEqual([
+      ['full_name', 'text'],
+      ['email', 'text'],
+      ['subscribe', 'checkbox'],
+      ['plan', 'choice'],
+      ['size', 'radio'],
+    ]);
+    expect(fields.find((f) => f.name === 'plan')!.options).toEqual(['Free', 'Pro', 'Team']);
+    expect(fields.find((f) => f.name === 'size')!.options).toEqual(['Small', 'Large']);
+  });
+
+  it('fills fields and keeps them editable', async () => {
+    const out = fillForm(mupdf, form, filled, false);
+    const pdfForm = (await PDFDocument.load(out)).getForm();
+    expect(pdfForm.getTextField('full_name').getText()).toBe('Ada Lovelace');
+    expect(pdfForm.getCheckBox('subscribe').isChecked()).toBe(true);
+    expect(pdfForm.getDropdown('plan').getSelected()).toEqual(['Pro']);
+    expect(pdfForm.getRadioGroup('size').getSelected()).toBe('Large');
+    // And MuPDF reads back what it wrote.
+    const again = readForm(mupdf, out);
+    expect(again.find((f) => f.name === 'size')!.value).toBe('Large');
+    expect(again.find((f) => f.name === 'subscribe')!.checked).toBe(true);
+  });
+
+  it('flattens: values become part of the page and the fields are gone', async () => {
+    const out = fillForm(mupdf, form, filled, true);
+    expect((await PDFDocument.load(out)).getForm().getFields()).toHaveLength(0);
+    expect(readForm(mupdf, out)).toEqual([]);
+    const text = pageText(out);
+    expect(text).toContain('Ada Lovelace');
+    expect(text).toContain('ada@example.com');
+    expect(text).toContain('Pro');
+  });
+
+  it('ignores unknown fields, wrong value types and options that do not exist', () => {
+    const out = fillForm(mupdf, form, [['__proto__', 'x'], ['subscribe', 'yes'], ['plan', 'Enterprise'], ['email', 42 as unknown as string]], false);
+    const fields = readForm(mupdf, out);
+    expect(fields.find((f) => f.name === 'subscribe')!.checked).toBe(false);
+    expect(fields.find((f) => f.name === 'plan')!.value).not.toBe('Enterprise');
+    expect(fields.find((f) => f.name === 'email')!.value).toBe('');
+  });
+
+  it('finds no fields in an ordinary PDF and refuses password files', () => {
+    expect(readForm(mupdf, makePdf(2))).toEqual([]);
+    expect(() => readForm(mupdf, files.find((f) => f.name === '14-password-aes256-is-test.pdf')!.bytes)).toThrow('Unlock it first');
   });
 });

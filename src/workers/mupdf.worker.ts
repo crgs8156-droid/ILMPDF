@@ -46,6 +46,10 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { file, before, after, images } = ops.compress(mupdf, job.file, job.level);
       return { files: [file], sizes: { before, after, images } };
     }
+    case 'readForm':
+      return { fields: ops.readForm(mupdf, job.file) };
+    case 'fillForm':
+      return { files: [ops.fillForm(mupdf, job.file, job.values, job.flatten)] };
   }
 }
 
