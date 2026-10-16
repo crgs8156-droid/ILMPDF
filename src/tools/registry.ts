@@ -16,6 +16,7 @@ import SignTool from './SignTool.svelte';
 import CropTool from './CropTool.svelte';
 import PdfToTextTool from './PdfToTextTool.svelte';
 import AnnotateTool from './AnnotateTool.svelte';
+import RedactTool from './RedactTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -36,5 +37,6 @@ export const TOOLS: Tool[] = [
   { id: 'unlock', name: 'Unlock PDF', blurb: 'Remove a password you know, so the PDF opens freely.', group: 'Security', component: UnlockTool },
   { id: 'compress', name: 'Compress PDF', blurb: 'Make a PDF smaller, with a choice of how much image quality to keep.', group: 'Optimize', component: CompressTool },
   { id: 'repair', name: 'Repair PDF', blurb: 'Rebuild a damaged PDF that will not open properly.', group: 'Optimize', component: RepairTool },
+  { id: 'redact', name: 'Redact PDF', blurb: 'Black out text, images and drawings for good: they are deleted from the file, not just covered.', group: 'Privacy', component: RedactTool },
   { id: 'metadata', name: 'Remove metadata', blurb: 'See and remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
 ];
