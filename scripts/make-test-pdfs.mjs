@@ -10,7 +10,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
-import { PDFDocument, StandardFonts, degrees, rgb } from 'pdf-lib';
+import { PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
 const LETTER = [612, 792];
@@ -229,6 +229,65 @@ async function formPdf() {
   return doc.save();
 }
 
+// Harmless stand-ins for what a hostile PDF can carry, for the Remove
+// scripts tool. The scripts only show an alert, and the launch action names
+// a program that does not exist. ILMPDF never runs any of it.
+const jsAction = (ctx, code) => ctx.obj({ S: 'JavaScript', JS: PDFString.of(code) });
+
+function addLink(doc, page, rect, action) {
+  const ref = doc.context.register(doc.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: rect, Border: [0, 0, 0], A: action }));
+  page.node.addAnnot(ref);
+}
+
+async function scriptedPdf() {
+  const doc = await newDoc('With scripts');
+  const ctx = doc.context;
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let n = 1; n <= 3; n++) drawPage(doc.addPage(A4), font, { n, total: 3, label: 'With scripts' });
+  const page = doc.getPage(0);
+  const lines = [
+    'This file carries: a document script, a script that runs on opening,',
+    'a "launch a program" action on this page, a javascript: link,',
+    'and an attached file (notes.txt). Below are two links that must stay:',
+  ];
+  lines.forEach((text, i) => page.drawText(text, { x: 40, y: 300 - i * 18, size: 12, font }));
+  page.drawText('example.com (web link)', { x: 40, y: 220, size: 12, font, color: rgb(0.1, 0.3, 0.8) });
+  page.drawText('Go to page 3 (link within the document)', { x: 40, y: 195, size: 12, font, color: rgb(0.1, 0.3, 0.8) });
+  page.drawText('Click me (javascript: link, removed)', { x: 40, y: 170, size: 12, font, color: rgb(0.8, 0.2, 0.2) });
+  addLink(doc, page, [38, 215, 200, 232], ctx.obj({ S: 'URI', URI: PDFString.of('https://example.com/') }));
+  addLink(doc, page, [38, 190, 290, 207], ctx.obj({ S: 'GoTo', D: [doc.getPage(2).ref, 'Fit'] }));
+  addLink(doc, page, [38, 165, 260, 182], ctx.obj({ S: 'URI', URI: PDFString.of('javascript:app.alert("ILMPDF test link")') }));
+  doc.addJavaScript('ilmpdf-test', 'app.alert("ILMPDF test: document script");');
+  doc.catalog.set(PDFName.of('OpenAction'), jsAction(ctx, 'app.alert("ILMPDF test: runs on opening");'));
+  page.node.set(PDFName.of('AA'), ctx.obj({ O: { S: 'Launch', F: PDFString.of('no-such-program') } }));
+  await doc.attach(new TextEncoder().encode('A made-up attached file.\n'), 'notes.txt', {
+    mimeType: 'text/plain',
+    description: 'Test attachment',
+    creationDate: FIXED_DATE,
+    modificationDate: FIXED_DATE,
+  });
+  return doc.save();
+}
+
+// A form like real-world ones: a field with format and keystroke scripts,
+// a "Send" button that submits the form, and an XFA form layer.
+async function scriptedFormPdf() {
+  const doc = await PDFDocument.load(await formPdf(), { updateMetadata: false });
+  const ctx = doc.context;
+  const form = doc.getForm();
+  const email = form.getTextField('email').acroField.dict;
+  email.set(PDFName.of('AA'), ctx.obj({ K: jsAction(ctx, 'event.change = event.change.toLowerCase();'), F: jsAction(ctx, 'app.alert("ILMPDF test: format script");') }));
+  const send = form.createButton('send');
+  send.addToPage('Send', doc.getPage(0), { x: 160, y: 500, width: 80, height: 24 });
+  send.acroField.getWidgets()[0].dict.set(PDFName.of('A'), ctx.obj({ S: 'SubmitForm', F: PDFString.of('https://example.com/form') }));
+  // pdf-lib deletes XFA whenever it touches the form, including while
+  // saving, so draw the field appearances first and add XFA last.
+  form.updateFieldAppearances();
+  const xfa = ctx.register(ctx.flateStream('<xdp:xdp xmlns:xdp="http://ns.adobe.com/xdp/"></xdp:xdp>'));
+  form.acroForm.dict.set(PDFName.of('XFA'), xfa);
+  return doc.save({ updateFieldAppearances: false });
+}
+
 // Points the cross-reference table at the wrong place, so a normal reader
 // fails but a repair tool can rebuild it.
 async function repairablePdf() {
@@ -308,6 +367,8 @@ export async function buildTestFiles() {
     { name: '15-form.pdf', purpose: 'Fillable form: text boxes, a checkbox, a dropdown and radio buttons.', bytes: await formPdf() },
     { name: '16-repairable.pdf', purpose: 'Broken cross-reference table: normal readers fail, Repair should fix it.', bytes: await repairablePdf() },
     { name: '17-scanned-heavy.pdf', purpose: 'Three big scanned-style pages: Compress should make it much smaller.', bytes: await scannedPdf() },
+    { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
+    { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },

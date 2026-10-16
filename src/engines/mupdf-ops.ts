@@ -516,3 +516,229 @@ export function extractText(mupdf: Mupdf, bytes: Uint8Array): TextResult {
     pdf.destroy();
   }
 }
+
+/**
+ * What Remove scripts found and took out. Each number counts one item.
+ * scripts: JavaScript (document-level, in actions, or `javascript:` links).
+ * autoActions: other actions that ran by themselves on events such as
+ * opening, closing, printing or saving.
+ * openers: actions that launch a program or open another file.
+ * dataActions: form actions that send data somewhere or load it in.
+ * attachments: files embedded inside the PDF.
+ * xfa: XFA form data (a second form layer that can carry scripts).
+ */
+export type SanitizeReport = {
+  scripts: number;
+  autoActions: number;
+  openers: number;
+  dataActions: number;
+  attachments: number;
+  xfa: number;
+};
+export type SanitizeResult = { file: Uint8Array | null; report: SanitizeReport };
+
+/** Action types (/S) that are removed, and which count they go in. */
+const RISKY_ACTIONS: Record<string, keyof SanitizeReport> = {
+  JavaScript: 'scripts',
+  Launch: 'openers',
+  GoToR: 'openers',
+  GoToE: 'openers',
+  RichMediaExecute: 'openers',
+  SubmitForm: 'dataActions',
+  ImportData: 'dataActions',
+};
+
+// Hostile files can nest actions or name trees very deeply, or in loops.
+const MAX_DEPTH = 64;
+
+/** The counts so far, plus the attached files already counted. */
+type Scan = SanitizeReport & { seenFiles: Set<number> };
+
+function emptyReport(): SanitizeReport {
+  return { scripts: 0, autoActions: 0, openers: 0, dataActions: 0, attachments: 0, xfa: 0 };
+}
+
+// MuPDF's empty value (for a missing key) has no document behind it and
+// cannot be resolved, so only resolve real values.
+function deref(obj: MuPDF.PDFObject): MuPDF.PDFObject {
+  return obj.isNull() ? obj : obj.resolve();
+}
+
+function nameOf(obj: MuPDF.PDFObject): string {
+  return obj.isName() ? obj.asName() : '';
+}
+
+/**
+ * Checks one action and the chain of actions after it (/Next). Counts every
+ * risky action it finds and returns true if any was found, in which case the
+ * caller removes the whole chain.
+ */
+function scanAction(action: MuPDF.PDFObject, report: SanitizeReport, depth = 0): boolean {
+  const obj = deref(action);
+  if (depth > MAX_DEPTH) return true; // A chain this long is not a normal file: drop it.
+  if (obj.isArray()) {
+    let risky = false;
+    for (let i = 0; i < obj.length; i++) risky = scanAction(obj.get(i), report, depth + 1) || risky;
+    return risky;
+  }
+  if (!obj.isDictionary()) return false;
+  let risky = false;
+  const type = nameOf(obj.get('S'));
+  const bucket = RISKY_ACTIONS[type];
+  if (bucket) {
+    report[bucket]++;
+    risky = true;
+  } else if (type === 'Rendition' && !obj.get('JS').isNull()) {
+    // A media action that also carries a script.
+    report.scripts++;
+    risky = true;
+  } else if (type === 'URI') {
+    const uri = obj.get('URI');
+    // Web links stay. Links that are really scripts in disguise go.
+    if (uri.isString() && /^\s*javascript:/i.test(uri.asString())) {
+      report.scripts++;
+      risky = true;
+    }
+  }
+  const next = obj.get('Next');
+  if (!next.isNull()) risky = scanAction(next, report, depth + 1) || risky;
+  return risky;
+}
+
+/** Counts the entries of a name tree (such as the list of attached files). */
+function countNameTree(node: MuPDF.PDFObject, onValue: (value: MuPDF.PDFObject) => void, depth = 0): number {
+  const obj = deref(node);
+  if (depth > MAX_DEPTH || !obj.isDictionary()) return 0;
+  let count = 0;
+  const names = deref(obj.get('Names'));
+  if (names.isArray()) {
+    for (let i = 1; i < names.length; i += 2) onValue(names.get(i));
+    count += Math.floor(names.length / 2);
+  }
+  const kids = deref(obj.get('Kids'));
+  if (kids.isArray()) for (let i = 0; i < kids.length; i++) count += countNameTree(kids.get(i), onValue, depth + 1);
+  return count;
+}
+
+/**
+ * Counts one attached file. The same file is often listed in more than one
+ * place (the file list and an associated-files entry), so each stored file
+ * object is counted once.
+ */
+function countFile(spec: MuPDF.PDFObject, scan: Scan): void {
+  if (spec.isIndirect()) {
+    const num = spec.asIndirect();
+    if (scan.seenFiles.has(num)) return;
+    scan.seenFiles.add(num);
+  }
+  scan.attachments++;
+}
+
+/**
+ * Cleans one dictionary or array, then the dictionaries and arrays written
+ * directly inside it. Values stored as separate (indirect) objects are not
+ * followed here, because sanitize() visits every object of the file anyway.
+ */
+function cleanObject(obj: MuPDF.PDFObject, report: Scan, depth = 0): void {
+  if (depth > MAX_DEPTH) return;
+  if (obj.isDictionary()) {
+    // Actions that run when something is clicked or the file is opened.
+    for (const key of ['A', 'PA', 'OpenAction']) {
+      const action = obj.get(key);
+      if (!action.isNull() && scanAction(action, report)) obj.delete(key);
+    }
+    // Additional actions: run by themselves on events (open, close, print,
+    // save, a field changing...). All of them go.
+    const aa = deref(obj.get('AA'));
+    if (!obj.get('AA').isNull()) {
+      if (aa.isDictionary()) {
+        aa.forEach((action) => {
+          if (!scanAction(action, report)) report.autoActions++;
+        });
+      }
+      obj.delete('AA');
+    }
+    // Paperclip annotations that hold an attached file.
+    const annots = deref(obj.get('Annots'));
+    if (annots.isArray()) {
+      for (let i = annots.length - 1; i >= 0; i--) {
+        const annot = deref(annots.get(i));
+        if (annot.isDictionary() && nameOf(annot.get('Subtype')) === 'FileAttachment') {
+          countFile(annot.get('FS'), report);
+          annots.delete(i);
+        }
+      }
+    }
+    // Associated files (PDF 2.0): attached files linked to a page or the document.
+    const af = obj.get('AF');
+    if (!af.isNull()) {
+      const list = deref(af);
+      if (list.isArray()) for (let i = 0; i < list.length; i++) countFile(list.get(i), report);
+      else countFile(af, report);
+      obj.delete('AF');
+    }
+  }
+  if (obj.isDictionary() || obj.isArray()) {
+    obj.forEach((value) => {
+      if (!value.isIndirect() && (value.isDictionary() || value.isArray())) cleanObject(value, report, depth + 1);
+    });
+  }
+}
+
+/** Document-wide parts that live in the catalog (the file's root object). */
+function cleanCatalog(catalog: MuPDF.PDFObject, report: Scan): void {
+  const names = deref(catalog.get('Names'));
+  if (names.isDictionary()) {
+    if (!names.get('JavaScript').isNull()) {
+      report.scripts += Math.max(1, countNameTree(names.get('JavaScript'), () => {}));
+      names.delete('JavaScript');
+    }
+    if (!names.get('EmbeddedFiles').isNull()) {
+      countNameTree(names.get('EmbeddedFiles'), (spec) => countFile(spec, report));
+      names.delete('EmbeddedFiles');
+      // A "portfolio" is a PDF that is mainly a folder of attached files.
+      catalog.delete('Collection');
+    }
+  }
+  const form = deref(catalog.get('AcroForm'));
+  if (form.isDictionary() && !form.get('XFA').isNull()) {
+    form.delete('XFA');
+    report.xfa++;
+  }
+}
+
+/**
+ * Removes JavaScript, actions that run by themselves, actions that launch
+ * programs, open other files or send form data, XFA forms and attached
+ * files. Pages, text, images, bookmarks, form fields, links within the
+ * document and web links are kept.
+ *
+ * Returns no file when there was nothing to remove. The saved file is fully
+ * rewritten (not appended to), so removed items are really gone from it.
+ */
+export function sanitize(mupdf: Mupdf, bytes: Uint8Array): SanitizeResult {
+  const pdf = open(mupdf, bytes);
+  try {
+    if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then remove its scripts.');
+    if (pdf.countPages() > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    const report: Scan = { ...emptyReport(), seenFiles: new Set() };
+    const catalog = deref(pdf.getTrailer().get('Root'));
+    if (catalog.isDictionary()) cleanCatalog(catalog, report);
+    // Visit every object in the file, so actions are found wherever they are
+    // (pages, links, form fields, bookmarks, annotations...).
+    const count = pdf.countObjects();
+    for (let num = 1; num < count; num++) {
+      const obj = deref(pdf.newIndirect(num));
+      if (obj.isDictionary() || obj.isArray()) cleanObject(obj, report);
+    }
+    const { seenFiles: _, ...counts } = report;
+    const found = Object.values(counts).some((n) => n > 0);
+    if (!found) return { file: null, report: counts };
+    // garbage: 'compact' drops the objects nothing points to any more (the
+    // scripts and attached files). Password restrictions are kept as they were.
+    const out = pdf.saveToBuffer({ garbage: 'compact' });
+    return { file: new Uint8Array(out.asUint8Array()), report: counts };
+  } finally {
+    pdf.destroy();
+  }
+}

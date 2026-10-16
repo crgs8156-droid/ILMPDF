@@ -52,6 +52,10 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { files: [ops.fillForm(mupdf, job.file, job.values, job.flatten)] };
     case 'extractText':
       return { text: ops.extractText(mupdf, job.file) };
+    case 'sanitize': {
+      const { file, report } = ops.sanitize(mupdf, job.file);
+      return { files: file ? [file] : [], removed: report };
+    }
   }
 }
 

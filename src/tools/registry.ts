@@ -15,6 +15,7 @@ import FormsTool from './FormsTool.svelte';
 import SignTool from './SignTool.svelte';
 import CropTool from './CropTool.svelte';
 import PdfToTextTool from './PdfToTextTool.svelte';
+import SanitizeTool from './SanitizeTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -35,4 +36,5 @@ export const TOOLS: Tool[] = [
   { id: 'compress', name: 'Compress PDF', blurb: 'Make a PDF smaller, with a choice of how much image quality to keep.', group: 'Optimize', component: CompressTool },
   { id: 'repair', name: 'Repair PDF', blurb: 'Rebuild a damaged PDF that will not open properly.', group: 'Optimize', component: RepairTool },
   { id: 'metadata', name: 'Remove metadata', blurb: 'See and remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
+  { id: 'remove-scripts', name: 'Remove scripts', blurb: 'Strip JavaScript, auto-run actions and attached files that other PDF apps might run.', group: 'Privacy', component: SanitizeTool },
 ];
