@@ -256,24 +256,66 @@ export async function addSignature(bytes: Uint8Array, image: ImageInput, placeme
   for (const place of placements) {
     const page = pages[place.page];
     if (!page) throw new UserFacingError(`This PDF has no page ${place.page + 1}.`);
-    const { x: bx, y: by, width: pw, height: ph } = page.getCropBox();
-    const turn = (((page.getRotation().angle % 360) + 360) % 360) as 0 | 90 | 180 | 270;
-    const sideways = turn === 90 || turn === 270;
-    // Size of the page as shown on screen.
-    const shownW = sideways ? ph : pw;
-    const shownH = sideways ? pw : ph;
-    const w = clamp(place.width, 0.02, 1) * shownW;
+    const view = shownView(page);
+    const w = clamp(place.width, 0.02, 1) * view.shownW;
     const h = w * aspect;
-    const left = clamp(place.x, 0, 1) * shownW;
-    const top = clamp(place.y, 0, 1) * shownH;
-    // The image is drawn from its bottom-left corner as seen on screen. Turn
-    // that on-screen point (u right, v down) into page coordinates, which do
-    // not rotate with the page and start at the bottom-left.
-    const [u, v] = [left, top + h];
-    const [px, py] =
-      turn === 0 ? [u, ph - v] : turn === 90 ? [v, u] : turn === 180 ? [pw - u, v] : [pw - v, ph - u];
+    const left = clamp(place.x, 0, 1) * view.shownW;
+    const top = clamp(place.y, 0, 1) * view.shownH;
+    // The image is drawn from its bottom-left corner as seen on screen.
+    const [px, py] = view.toPage(left, top + h);
     // Rotate the image back by the page's turn so it looks upright on screen.
-    page.drawImage(embedded, { x: bx + px, y: by + py, width: w, height: h, rotate: degrees(turn) });
+    page.drawImage(embedded, { x: px, y: py, width: w, height: h, rotate: degrees(view.turn) });
+  }
+  return save(doc);
+}
+
+/**
+ * A page as it is shown on screen: its visible box (the crop box) turned by
+ * the page's rotation. `toPage` converts an on-screen point (u to the right,
+ * v down, in PDF units from the top-left corner) into page coordinates, which
+ * do not rotate with the page and start at the bottom-left.
+ */
+function shownView(page: PDFPage) {
+  const { x: bx, y: by, width: pw, height: ph } = page.getCropBox();
+  const turn = (((page.getRotation().angle % 360) + 360) % 360) as 0 | 90 | 180 | 270;
+  const sideways = turn === 90 || turn === 270;
+  const toPage = (u: number, v: number): [number, number] => {
+    const [x, y] =
+      turn === 0 ? [u, ph - v] : turn === 90 ? [v, u] : turn === 180 ? [pw - u, v] : [pw - v, ph - u];
+    return [bx + x, by + y];
+  };
+  return { turn, shownW: sideways ? ph : pw, shownH: sideways ? pw : ph, toPage };
+}
+
+/** Part of a page as shown on screen, as fractions: top-left corner, width and height. */
+export type CropBox = { x: number; y: number; width: number; height: number };
+
+/**
+ * Crops pages to a box. `pages` are 0-based; leave it empty for every page.
+ * Cropping only hides the rest of the page: the hidden content is still in
+ * the file (removing it for good is redaction, a later tool).
+ */
+export async function cropPages(bytes: Uint8Array, box: CropBox, pages: number[]): Promise<Uint8Array> {
+  const x0 = clamp(box.x, 0, 1);
+  const y0 = clamp(box.y, 0, 1);
+  const x1 = clamp(box.x + box.width, 0, 1);
+  const y1 = clamp(box.y + box.height, 0, 1);
+  if (x1 - x0 < 0.02 || y1 - y0 < 0.02) throw new UserFacingError('The crop area is too small.');
+  const doc = await load(bytes);
+  const all = doc.getPages();
+  const chosen = pages.length ? pages : all.map((_, i) => i);
+  for (const index of chosen) {
+    const page = all[index];
+    if (!page) throw new UserFacingError(`This PDF has no page ${index + 1}.`);
+    const view = shownView(page);
+    const [ax, ay] = view.toPage(x0 * view.shownW, y0 * view.shownH);
+    const [bx, by] = view.toPage(x1 * view.shownW, y1 * view.shownH);
+    const [cx, cy, cw, ch] = [Math.min(ax, bx), Math.min(ay, by), Math.abs(bx - ax), Math.abs(by - ay)];
+    page.setCropBox(cx, cy, cw, ch);
+    // Keep the related boxes inside the new crop, so printers and viewers agree.
+    page.setTrimBox(cx, cy, cw, ch);
+    page.setBleedBox(cx, cy, cw, ch);
+    page.setArtBox(cx, cy, cw, ch);
   }
   return save(doc);
 }

@@ -28,6 +28,8 @@ async function run(job: PdfJob): Promise<JobOutput> {
       return { files: [await ops.stripMetadata(job.file)] };
     case 'sign':
       return { files: [await ops.addSignature(job.file, job.image, job.placements)] };
+    case 'crop':
+      return { files: [await ops.cropPages(job.file, job.box, job.pages)] };
   }
 }
 
