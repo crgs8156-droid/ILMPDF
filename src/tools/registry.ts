@@ -15,6 +15,7 @@ import FormsTool from './FormsTool.svelte';
 import SignTool from './SignTool.svelte';
 import CropTool from './CropTool.svelte';
 import PdfToTextTool from './PdfToTextTool.svelte';
+import AnnotateTool from './AnnotateTool.svelte';
 import SanitizeTool from './SanitizeTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
@@ -29,6 +30,7 @@ export const TOOLS: Tool[] = [
   { id: 'crop', name: 'Crop pages', blurb: 'Trim the edges of pages by drawing the area to keep.', group: 'Edit', component: CropTool },
   { id: 'page-numbers', name: 'Page numbers', blurb: 'Stamp page numbers on every page.', group: 'Edit', component: PageNumbersTool },
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
+  { id: 'annotate', name: 'Annotate PDF', blurb: 'Add text boxes, highlights, shapes and comments to pages.', group: 'Edit', component: AnnotateTool },
   { id: 'sign', name: 'Sign PDF', blurb: 'Draw your signature or use an image of it, then place it on the page.', group: 'Edit', component: SignTool },
   { id: 'forms', name: 'Fill forms', blurb: 'Fill in a PDF form, and optionally flatten it so it can no longer be changed.', group: 'Edit', component: FormsTool },
   { id: 'protect', name: 'Protect PDF', blurb: 'Add a password (AES-256) so only people who know it can open the PDF.', group: 'Security', component: ProtectTool },

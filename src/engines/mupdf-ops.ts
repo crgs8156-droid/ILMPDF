@@ -2,7 +2,7 @@
 // The mupdf module is passed in so this file never loads the 10 MB engine
 // by itself (and so unit tests can hand in the Node build).
 import type * as MuPDF from 'mupdf';
-import { MAX_PAGES } from '../core/limits';
+import { MAX_ANNOTATIONS, MAX_PAGES } from '../core/limits';
 import { UserFacingError } from './pdflib-ops';
 
 /**
@@ -514,6 +514,150 @@ export function extractText(mupdf: Mupdf, bytes: Uint8Array): TextResult {
     return { pages, chars };
   } finally {
     pdf.destroy();
+  }
+}
+
+/** The kinds of annotation the Annotate tool can add. */
+export type AnnotKind = 'text' | 'highlight' | 'rect' | 'line' | 'note';
+
+/**
+ * One annotation to add. Positions are fractions (0 to 1) of the page as it
+ * is shown on screen, from its top-left corner: (x1, y1) and (x2, y2) are
+ * opposite corners of the box, or the two ends of a line. A note uses only
+ * (x1, y1), the top-left corner of its icon.
+ */
+export type NewAnnotation = {
+  page: number;
+  kind: AnnotKind;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  /** Red, green and blue, each from 0 to 1. */
+  color: [number, number, number];
+  /** The words of a text box or note. */
+  text?: string;
+  /** Text box font size, in points. */
+  fontSize?: number;
+};
+
+const MAX_ANNOT_TEXT = 5_000;
+const NOTE_SIZE = 20; // points: the usual size of a comment icon
+
+const unit = (n: number) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0);
+
+/**
+ * Adds annotations to pages. They are real PDF annotations, so Preview and
+ * Acrobat can still move, edit or delete them later.
+ *
+ * MuPDF takes annotation positions in the page's on-screen space (rotation
+ * applied, origin at the top-left of the visible area, in points), which is
+ * exactly what the fractions describe, so no rotation maths is needed here.
+ * MuPDF also draws text upright on rotated pages.
+ */
+export function annotate(mupdf: Mupdf, bytes: Uint8Array, items: NewAnnotation[]): Uint8Array {
+  if (items.length === 0) throw new UserFacingError('Add at least one annotation first.');
+  if (items.length > MAX_ANNOTATIONS) throw new UserFacingError(`ILMPDF adds at most ${MAX_ANNOTATIONS} annotations at a time.`);
+  const pdf = open(mupdf, bytes);
+  try {
+    if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then annotate it.');
+    const count = pdf.countPages();
+    if (count > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    // Scripts never run in ILMPDF; this keeps it that way if MuPDF ever gains them.
+    pdf.disableJS();
+    const byPage = new Map<number, NewAnnotation[]>();
+    for (const item of items) {
+      if (!Number.isInteger(item.page) || item.page < 0 || item.page >= count) {
+        throw new UserFacingError(`This PDF has no page ${item.page + 1}.`);
+      }
+      byPage.set(item.page, [...(byPage.get(item.page) ?? []), item]);
+    }
+    for (const [index, list] of byPage) {
+      const page = pdf.loadPage(index);
+      try {
+        const [bx0, by0, bx1, by1] = page.getBounds();
+        const w = bx1 - bx0;
+        const h = by1 - by0;
+        for (const item of list) addOne(page, item, w, h);
+      } finally {
+        page.destroy();
+      }
+    }
+    return new Uint8Array(pdf.saveToBuffer({ garbage: 'compact' }).asUint8Array());
+  } finally {
+    pdf.destroy();
+  }
+}
+
+function addOne(page: MuPDF.PDFPage, item: NewAnnotation, w: number, h: number) {
+  const color = item.color.map(unit) as [number, number, number];
+  const x1 = unit(item.x1) * w;
+  const y1 = unit(item.y1) * h;
+  const x2 = unit(item.x2) * w;
+  const y2 = unit(item.y2) * h;
+  const box: [number, number, number, number] = [Math.min(x1, x2), Math.min(y1, y2), Math.max(x1, x2), Math.max(y1, y2)];
+  const text = cleanText(item.text ?? '').slice(0, MAX_ANNOT_TEXT);
+  const tooSmall = box[2] - box[0] < 2 || box[3] - box[1] < 2;
+
+  switch (item.kind) {
+    case 'text': {
+      if (!text.trim()) throw new UserFacingError('A text box needs some text.');
+      if (tooSmall) throw new UserFacingError('A text box is too small.');
+      const size = Number.isFinite(item.fontSize) ? Math.min(72, Math.max(6, item.fontSize!)) : 12;
+      const annot = page.createAnnotation('FreeText');
+      annot.setRect(box);
+      annot.setContents(text);
+      annot.setDefaultAppearance('Helv', size, color);
+      annot.setBorderWidth(0);
+      annot.update();
+      // MuPDF adds a callout line (CL) pointing at the page corner. It is
+      // ignored by most viewers, but nothing here asked for it.
+      annot.getObject().delete('CL');
+      annot.update();
+      return;
+    }
+    case 'highlight': {
+      if (tooSmall) throw new UserFacingError('A highlight is too small.');
+      const annot = page.createAnnotation('Highlight');
+      annot.setColor(color);
+      const [l, t, r, b] = box;
+      // Quad points run: top-left, top-right, bottom-left, bottom-right.
+      annot.setQuadPoints([[l, t, r, t, l, b, r, b]]);
+      annot.update();
+      return;
+    }
+    case 'rect': {
+      if (tooSmall) throw new UserFacingError('A rectangle is too small.');
+      const annot = page.createAnnotation('Square');
+      annot.setRect(box);
+      annot.setColor(color);
+      annot.setBorderWidth(2);
+      annot.update();
+      return;
+    }
+    case 'line': {
+      if (Math.hypot(x2 - x1, y2 - y1) < 2) throw new UserFacingError('A line is too short.');
+      const annot = page.createAnnotation('Line');
+      annot.setLine([x1, y1], [x2, y2]);
+      annot.setColor(color);
+      annot.setBorderWidth(2);
+      annot.update();
+      return;
+    }
+    case 'note': {
+      if (!text.trim()) throw new UserFacingError('A comment needs some text.');
+      const left = Math.min(x1, Math.max(0, w - NOTE_SIZE));
+      const top = Math.min(y1, Math.max(0, h - NOTE_SIZE));
+      const annot = page.createAnnotation('Text');
+      annot.setRect([left, top, left + NOTE_SIZE, top + NOTE_SIZE]);
+      annot.setIcon('Comment');
+      annot.setColor(color);
+      annot.setContents(text);
+      annot.update();
+      return;
+    }
+    default:
+      throw new UserFacingError('Unknown kind of annotation.');
   }
 }
 
