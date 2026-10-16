@@ -133,7 +133,7 @@
   </fieldset>
   <p class="muted">
     Cropping hides the rest of the page, but the hidden part is still inside the file. To remove something for good,
-    use redaction (coming in Phase 3).
+    use the Redact tool.
   </p>
   <div class="actions">
     <button type="button" disabled={job.busy} onclick={crop} data-testid="run">{job.busy ? 'Cropping…' : 'Crop PDF'}</button>

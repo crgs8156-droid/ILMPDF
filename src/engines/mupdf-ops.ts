@@ -662,6 +662,265 @@ function addOne(page: MuPDF.PDFPage, item: NewAnnotation, w: number, h: number) 
 }
 
 /**
+ * An area to redact: the 0-based page, and the area's top-left corner, width
+ * and height as fractions of the page as it is shown on screen (after any
+ * page rotation), the same way the Crop and Sign tools measure.
+ */
+export type RedactBox = { page: number; x: number; y: number; width: number; height: number };
+export type RedactResult = { file: Uint8Array; boxes: number; pages: number };
+
+export const MAX_REDACT_BOXES = 10_000;
+const MAX_SEARCH = 200;
+
+/**
+ * Finds every place a word or phrase appears (ignoring upper/lower case and
+ * accents) and
+ * gives back one box per line of each match, ready to redact.
+ */
+export function findText(mupdf: Mupdf, bytes: Uint8Array, needle: string): RedactBox[] {
+  const text = needle.trim();
+  if (!text) throw new UserFacingError('Type the text to find.');
+  if (text.length > MAX_SEARCH) throw new UserFacingError(`Search for at most ${MAX_SEARCH} characters at a time.`);
+  const pdf = openForRedaction(mupdf, bytes);
+  try {
+    const found: RedactBox[] = [];
+    const count = pdf.countPages();
+    for (let i = 0; i < count; i++) {
+      const page = pdf.loadPage(i);
+      try {
+        const view = pageView(page);
+        for (const hit of page.search(text, 'ignore-case,ignore-diacritics')) {
+          for (const quad of hit) {
+            if (found.length >= MAX_REDACT_BOXES) {
+              throw new UserFacingError(`That text appears more than ${MAX_REDACT_BOXES} times, which is above ILMPDF's limit.`);
+            }
+            // A point of margin all round, so the edges of letters are covered too.
+            found.push({ page: i, ...view.toFraction(padRect(quadBounds(quad), 1)) });
+          }
+        }
+      } finally {
+        page.destroy();
+      }
+    }
+    return found;
+  } finally {
+    pdf.destroy();
+  }
+}
+
+/**
+ * Redacts for good: the text, image pixels and drawn shapes under each box
+ * are deleted from the file (not just covered), then a black box is drawn in
+ * their place. Links, comments and form fields that overlap a box are removed
+ * too. With `stripMetadata`, the document's title, author and similar
+ * details, and its accessibility tagging (which can hold copies of the page
+ * text), are removed as well.
+ *
+ * Afterwards the saved file is opened again and checked: if any text is
+ * still found under a box, the job fails rather than hand back an unsafe file.
+ */
+export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], stripMetadata: boolean): RedactResult {
+  const pdf = openForRedaction(mupdf, bytes);
+  try {
+    const count = pdf.countPages();
+    const byPage = groupBoxes(boxes, count);
+    for (const [index, areas] of byPage) {
+      const page = pdf.loadPage(index);
+      try {
+        const view = pageView(page);
+        const rects = areas.map((b) => view.toRect(b));
+        removeOverlapping(pdf, page, rects);
+        for (const rect of rects) {
+          const annot = page.createAnnotation('Redact');
+          annot.setRect(rect);
+          annot.update();
+        }
+        page.applyRedactions(
+          true,
+          mupdf.PDFPage.REDACT_IMAGE_PIXELS, // blank only the covered part of an image
+          mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
+          mupdf.PDFPage.REDACT_TEXT_REMOVE,
+        );
+      } finally {
+        page.destroy();
+      }
+    }
+    if (stripMetadata) removeMetadata(pdf);
+    // A full rewrite (never an incremental save), and "garbage" drops every
+    // object no longer used, such as the page contents before redaction.
+    const file = new Uint8Array(pdf.saveToBuffer({ garbage: 'compact' }).asUint8Array());
+    checkRedacted(mupdf, file, byPage);
+    return { file, boxes: [...byPage.values()].reduce((n, a) => n + a.length, 0), pages: byPage.size };
+  } finally {
+    pdf.destroy();
+  }
+}
+
+function openForRedaction(mupdf: Mupdf, bytes: Uint8Array): MuPDF.PDFDocument {
+  const pdf = open(mupdf, bytes);
+  if (pdf.needsPassword()) {
+    pdf.destroy();
+    throw new UserFacingError('This PDF has a password. Unlock it first, then redact it.');
+  }
+  if (pdf.countPages() > MAX_PAGES) {
+    pdf.destroy();
+    throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+  }
+  pdf.disableJS();
+  return pdf;
+}
+
+/** Checks the boxes and sorts them by page; boxes are clipped to the page. */
+function groupBoxes(boxes: RedactBox[], pages: number): Map<number, RedactBox[]> {
+  if (boxes.length > MAX_REDACT_BOXES) {
+    throw new UserFacingError(`Mark at most ${MAX_REDACT_BOXES} areas at a time.`);
+  }
+  const byPage = new Map<number, RedactBox[]>();
+  for (const b of boxes) {
+    if (!Number.isInteger(b.page) || b.page < 0 || b.page >= pages) continue;
+    const x0 = clampUnit(b.x);
+    const y0 = clampUnit(b.y);
+    const x1 = clampUnit(b.x + b.width);
+    const y1 = clampUnit(b.y + b.height);
+    if (x1 <= x0 || y1 <= y0) continue;
+    const list = byPage.get(b.page) ?? [];
+    list.push({ page: b.page, x: x0, y: y0, width: x1 - x0, height: y1 - y0 });
+    byPage.set(b.page, list);
+  }
+  if (byPage.size === 0) throw new UserFacingError('Mark at least one area to redact.');
+  return byPage;
+}
+
+function clampUnit(n: number): number {
+  return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
+}
+
+/**
+ * MuPDF measures pages as they are shown: rotation already applied, origin at
+ * the top-left corner, in points. That makes converting to and from the
+ * on-screen fractions a simple scale.
+ */
+function pageView(page: MuPDF.PDFPage) {
+  const [bx0, by0, bx1, by1] = page.getBounds();
+  const w = bx1 - bx0;
+  const h = by1 - by0;
+  return {
+    toRect: (b: RedactBox): MuPDF.Rect => [bx0 + b.x * w, by0 + b.y * h, bx0 + (b.x + b.width) * w, by0 + (b.y + b.height) * h],
+    toFraction: ([x0, y0, x1, y1]: MuPDF.Rect) => {
+      const fx0 = clampUnit((x0 - bx0) / w);
+      const fy0 = clampUnit((y0 - by0) / h);
+      return { x: fx0, y: fy0, width: clampUnit((x1 - bx0) / w) - fx0, height: clampUnit((y1 - by0) / h) - fy0 };
+    },
+  };
+}
+
+function quadBounds(q: MuPDF.Quad): MuPDF.Rect {
+  const xs = [q[0], q[2], q[4], q[6]];
+  const ys = [q[1], q[3], q[5], q[7]];
+  return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
+}
+
+function padRect([x0, y0, x1, y1]: MuPDF.Rect, by: number): MuPDF.Rect {
+  return [x0 - by, y0 - by, x1 + by, y1 + by];
+}
+
+function overlaps(a: MuPDF.Rect, b: MuPDF.Rect): boolean {
+  return a[0] < b[2] && b[0] < a[2] && a[1] < b[3] && b[1] < a[3];
+}
+
+/**
+ * Links, comments and form fields sit on top of the page rather than in it,
+ * so redaction alone would leave them (and the text they carry) behind.
+ * Form fields are emptied before they are removed, because a field's value
+ * can also be stored away from the page, in the form's list of fields.
+ */
+function removeOverlapping(pdf: MuPDF.PDFDocument, page: MuPDF.PDFPage, rects: MuPDF.Rect[]) {
+  const hit = (r: MuPDF.Rect) => rects.some((rect) => overlaps(r, rect));
+  for (const link of page.getLinks()) if (hit(link.getBounds())) page.deleteLink(link);
+  for (const widget of page.getWidgets()) {
+    if (!hit(widget.getBounds())) continue;
+    const obj = widget.getObject();
+    clearFieldValue(obj);
+    page.deleteAnnotation(widget);
+    detachFromForm(pdf, obj);
+  }
+  for (const annot of page.getAnnotations()) {
+    if (annot.getType() !== 'Redact' && hit(annot.getBounds())) page.deleteAnnotation(annot);
+  }
+}
+
+/** Deletes the stored value of a form field, up through its parent fields. */
+function clearFieldValue(obj: MuPDF.PDFObject) {
+  for (let node = obj, depth = 0; node.isDictionary() && depth < 32; node = node.get('Parent'), depth++) {
+    node.delete('V');
+    node.delete('DV');
+  }
+}
+
+/**
+ * Takes a removed form field out of the form's list of fields too, so
+ * nothing refers to it any more and saving drops it, along with its picture
+ * of the old value (its "appearance").
+ */
+function detachFromForm(pdf: MuPDF.PDFDocument, obj: MuPDF.PDFObject) {
+  if (!obj.isIndirect()) return;
+  const parent = obj.get('Parent');
+  const list = parent.isDictionary() ? parent.get('Kids') : pdf.getTrailer().get('Root', 'AcroForm', 'Fields');
+  if (!list.isArray()) return;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const item = list.get(i);
+    if (item.isIndirect() && item.asIndirect() === obj.asIndirect()) list.delete(i);
+  }
+  obj.delete('AP');
+}
+
+/** Removes the document details (title, author...) and the accessibility tagging. */
+function removeMetadata(pdf: MuPDF.PDFDocument) {
+  const trailer = pdf.getTrailer();
+  trailer.delete('Info');
+  const root = trailer.get('Root');
+  for (const key of ['Metadata', 'StructTreeRoot', 'MarkInfo', 'PieceInfo']) root.delete(key);
+  for (let i = 0; i < pdf.countPages(); i++) {
+    const page = pdf.findPage(i);
+    for (const key of ['Metadata', 'PieceInfo', 'StructParents']) page.delete(key);
+  }
+}
+
+/** Re-opens the result and makes sure no text or form field is left under any box. */
+function checkRedacted(mupdf: Mupdf, file: Uint8Array, byPage: Map<number, RedactBox[]>) {
+  const unsafe = () => new UserFacingError('Some content under the marked areas could not be removed, so nothing was saved.');
+  const pdf = open(mupdf, file);
+  try {
+    for (const [index, areas] of byPage) {
+      const page = pdf.loadPage(index);
+      try {
+        const view = pageView(page);
+        // Shrunk by a hair so text that only touches a box's edge doesn't count.
+        const rects = areas.map((b) => padRect(view.toRect(b), -0.5));
+        const inside = (x: number, y: number) => rects.some((r) => x > r[0] && x < r[2] && y > r[1] && y < r[3]);
+        let leftover = false;
+        const stext = page.toStructuredText('');
+        try {
+          stext.walk({
+            onChar(_c, _origin, _font, _size, quad) {
+              const [x0, y0, x1, y1] = quadBounds(quad);
+              if (inside((x0 + x1) / 2, (y0 + y1) / 2)) leftover = true;
+            },
+          });
+        } finally {
+          stext.destroy();
+        }
+        if (leftover || page.getWidgets().some((w) => rects.some((r) => overlaps(w.getBounds(), r)))) throw unsafe();
+      } finally {
+        page.destroy();
+      }
+    }
+  } finally {
+    pdf.destroy();
+  }
+}
+
+/**
  * What Remove scripts found and took out. Each number counts one item.
  * scripts: JavaScript (document-level, in actions, or `javascript:` links).
  * autoActions: other actions that ran by themselves on events such as

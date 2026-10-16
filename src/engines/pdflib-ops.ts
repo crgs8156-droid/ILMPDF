@@ -293,7 +293,7 @@ export type CropBox = { x: number; y: number; width: number; height: number };
 /**
  * Crops pages to a box. `pages` are 0-based; leave it empty for every page.
  * Cropping only hides the rest of the page: the hidden content is still in
- * the file (removing it for good is redaction, a later tool).
+ * the file (removing it for good is redaction: see redact() in mupdf-ops).
  */
 export async function cropPages(bytes: Uint8Array, box: CropBox, pages: number[]): Promise<Uint8Array> {
   const x0 = clamp(box.x, 0, 1);

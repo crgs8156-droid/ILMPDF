@@ -10,7 +10,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
-import { PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
 const LETTER = [612, 792];
@@ -313,6 +313,41 @@ async function scannedPdf() {
   return doc.save();
 }
 
+// A made-up letter full of "private" details to practise redaction on: the
+// same account number on both pages (the second page is rotated), a photo,
+// a drawn shape, a link and a filled-in form field.
+async function redactionPdf() {
+  const doc = await newDoc('Redaction sample');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const photo = await doc.embedPng(png(240, 300, (x, y) => [80 + (x % 60), 120, 200 - (y % 80)]));
+  const form = doc.getForm();
+
+  const first = doc.addPage(A4);
+  const line = (page, text, y, f = font) => page.drawText(text, { x: 60, y, size: 14, font: f });
+  line(first, 'Redaction sample (made up)', 780, bold);
+  line(first, 'Name: Jane Example', 730);
+  line(first, 'Account number: 0000 1111 2222 3333', 700);
+  line(first, 'Phone: 555-0100', 670);
+  line(first, 'This sentence is public and should stay readable.', 640);
+  first.drawImage(photo, { x: 380, y: 560, width: 120, height: 150 });
+  first.drawRectangle({ x: 60, y: 480, width: 120, height: 60, color: rgb(0.85, 0.33, 0.31) });
+  line(first, 'Secret notes field:', 430);
+  const notes = form.createTextField('secret_notes');
+  notes.setText('Account 0000 1111 2222 3333');
+  notes.addToPage(first, { x: 60, y: 395, width: 300, height: 24 });
+  // A web link over the phone number (it points nowhere real).
+  const link = doc.context.obj({ Type: 'Annot', Subtype: 'Link', Rect: [60, 665, 200, 685], Border: [0, 0, 0], A: { S: 'URI', URI: PDFString.of('https://example.invalid/jane') } });
+  first.node.lookup(PDFName.of('Annots'), PDFArray).push(doc.context.register(link));
+
+  const second = doc.addPage(A4);
+  line(second, 'Page two (rotated)', 780, bold);
+  line(second, 'Account number again: 0000 1111 2222 3333', 730);
+  line(second, 'Public text on page two.', 700);
+  second.setRotation(degrees(90));
+  return doc.save();
+}
+
 // ---- The full set ----
 
 export async function buildTestFiles() {
@@ -367,6 +402,11 @@ export async function buildTestFiles() {
     { name: '15-form.pdf', purpose: 'Fillable form: text boxes, a checkbox, a dropdown and radio buttons.', bytes: await formPdf() },
     { name: '16-repairable.pdf', purpose: 'Broken cross-reference table: normal readers fail, Repair should fix it.', bytes: await repairablePdf() },
     { name: '17-scanned-heavy.pdf', purpose: 'Three big scanned-style pages: Compress should make it much smaller.', bytes: await scannedPdf() },
+    {
+      name: '19-redaction-sample.pdf',
+      purpose: 'Made-up name, account number (on both pages), photo, shape, link and form field: practise redaction.',
+      bytes: await redactionPdf(),
+    },
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
