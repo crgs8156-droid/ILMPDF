@@ -17,6 +17,7 @@ import CropTool from './CropTool.svelte';
 import PdfToTextTool from './PdfToTextTool.svelte';
 import AnnotateTool from './AnnotateTool.svelte';
 import RedactTool from './RedactTool.svelte';
+import SanitizeTool from './SanitizeTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -39,4 +40,5 @@ export const TOOLS: Tool[] = [
   { id: 'repair', name: 'Repair PDF', blurb: 'Rebuild a damaged PDF that will not open properly.', group: 'Optimize', component: RepairTool },
   { id: 'redact', name: 'Redact PDF', blurb: 'Black out text, images and drawings for good: they are deleted from the file, not just covered.', group: 'Privacy', component: RedactTool },
   { id: 'metadata', name: 'Remove metadata', blurb: 'See and remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
+  { id: 'remove-scripts', name: 'Remove scripts', blurb: 'Strip JavaScript, auto-run actions and attached files that other PDF apps might run.', group: 'Privacy', component: SanitizeTool },
 ];

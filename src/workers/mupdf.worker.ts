@@ -60,6 +60,10 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { file, boxes, pages } = ops.redact(mupdf, job.file, job.boxes, job.stripMetadata);
       return { files: [file], count: boxes, meta: { pages: String(pages) } };
     }
+    case 'sanitize': {
+      const { file, report } = ops.sanitize(mupdf, job.file);
+      return { files: file ? [file] : [], removed: report };
+    }
   }
 }
 

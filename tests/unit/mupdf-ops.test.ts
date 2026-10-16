@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
-import { cleanText, compress, extractText, fillForm, inspect, open, protect, readForm, repair, unlock } from '../../src/engines/mupdf-ops';
-import { makePdf } from '../fixtures/make-pdf';
+import { cleanText, compress, extractText, fillForm, inspect, open, protect, readForm, repair, sanitize, unlock } from '../../src/engines/mupdf-ops';
+import { makePdf, makeScriptedPdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
 
@@ -315,5 +315,72 @@ describe('extractText', async () => {
 
   it('removes control characters and hidden direction marks', () => {
     expect(cleanText('a\u0000b\u0007c\r\nd\re\tf\u202eg\u2066h\u2069  \n\n')).toBe('abc\nd\ne\tfgh');
+  });
+});
+
+describe('sanitize', async () => {
+  const files: { name: string; bytes: Uint8Array }[] = await buildTestFiles();
+  const get = (name: string) => files.find((f) => f.name === name)!.bytes;
+  const latin1 = (bytes: Uint8Array) => new TextDecoder('latin1').decode(bytes);
+
+  it('finds and counts every kind of risky content', () => {
+    const { file, report } = sanitize(mupdf, makeScriptedPdf());
+    expect(report).toEqual({ scripts: 6, autoActions: 1, openers: 2, dataActions: 1, attachments: 2, xfa: 1 });
+    expect(file).not.toBeNull();
+  });
+
+  it('leaves nothing risky behind, even as unused objects', () => {
+    const text = latin1(sanitize(mupdf, makeScriptedPdf()).file!);
+    for (const gone of ['/JavaScript', 'app.alert', 'this.print', '/Launch', 'no-such-program', '/SubmitForm', '/EmbeddedFile', 'attached file body', 'paperclip file body', '/FileAttachment', 'xdp:xdp', '/XFA', '/AA', '/OpenAction']) {
+      expect(text, gone).not.toContain(gone);
+    }
+  });
+
+  it('finds nothing more when run on its own output', () => {
+    const once = sanitize(mupdf, makeScriptedPdf()).file!;
+    const twice = sanitize(mupdf, once);
+    expect(twice.file).toBeNull();
+    expect(Object.values(twice.report).every((n) => n === 0)).toBe(true);
+  });
+
+  it('keeps the page, its text, the form field, a web link and a link within the document', () => {
+    const out = sanitize(mupdf, makeScriptedPdf()).file!;
+    expect(extractText(mupdf, out).pages).toEqual(['Hello sanitize']);
+    expect(readForm(mupdf, out).map((f) => f.name)).toEqual(['name']);
+    const doc = open(mupdf, out);
+    const links = doc.loadPage(0).getLinks().map((l) => l.getURI());
+    doc.destroy();
+    expect(links).toHaveLength(2);
+    expect(links).toContain('https://example.com/');
+    expect(links.some((uri) => uri.startsWith('#'))).toBe(true);
+  });
+
+  it('returns no file for a PDF that has nothing to remove', () => {
+    const { file, report } = sanitize(mupdf, makePdf(3));
+    expect(file).toBeNull();
+    expect(report).toEqual({ scripts: 0, autoActions: 0, openers: 0, dataActions: 0, attachments: 0, xfa: 0 });
+  });
+
+  it('asks for a locked PDF to be unlocked first', () => {
+    expect(() => sanitize(mupdf, makePdf(1, { encrypted: true }))).toThrow('Unlock it first');
+  });
+
+  it('cleans the generated test file with scripts and keeps its links', () => {
+    const { file, report } = sanitize(mupdf, get('20-with-scripts.pdf'));
+    expect(report).toEqual({ scripts: 3, autoActions: 0, openers: 1, dataActions: 0, attachments: 1, xfa: 0 });
+    const doc = open(mupdf, file!);
+    expect(doc.countPages()).toBe(3);
+    const links = doc.loadPage(0).getLinks().map((l) => l.getURI());
+    doc.destroy();
+    expect(links).toHaveLength(2);
+    expect(links).toContain('https://example.com/');
+  });
+
+  it('cleans the generated form with scripts and keeps its fields fillable', () => {
+    const { file, report } = sanitize(mupdf, get('21-form-with-scripts.pdf'));
+    expect(report).toEqual({ scripts: 2, autoActions: 0, openers: 0, dataActions: 1, attachments: 0, xfa: 1 });
+    expect(readForm(mupdf, file!).map((f) => f.name)).toEqual(['full_name', 'email', 'subscribe', 'plan', 'size']);
+    const filled = fillForm(mupdf, file!, [['email', 'a@example.com']], false);
+    expect(readForm(mupdf, filled).find((f) => f.name === 'email')).toMatchObject({ value: 'a@example.com' });
   });
 });
