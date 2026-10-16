@@ -463,3 +463,48 @@ function radioLabel(widget: MuPDF.PDFWidget, index: number): string {
   if (/^\d+$/.test(on) && options[Number(on)] !== undefined) return options[Number(on)]!;
   return on || options[index] || `Option ${index + 1}`;
 }
+
+export type TextResult = { pages: string[]; chars: number };
+
+// Control characters other than tab and newline, and the Unicode marks that
+// silently reverse or hide text direction. They have no place in a plain
+// text file and can make the saved text look different from what it is.
+const UNSAFE_CHARS = /[\u0000-\u0008\u000b-\u001f\u007f\u202a-\u202e\u2066-\u2069]/g;
+
+/** Plain-text clean-up: one kind of line ending, no unsafe characters, no trailing blank space. */
+export function cleanText(text: string): string {
+  return text.replace(/\r\n?/g, '\n').replace(UNSAFE_CHARS, '').trimEnd();
+}
+
+/**
+ * Reads the text of every page, in reading order as MuPDF finds it.
+ * Scanned pages (pictures of text) give nothing: that needs OCR.
+ */
+export function extractText(mupdf: Mupdf, bytes: Uint8Array): TextResult {
+  const pdf = open(mupdf, bytes);
+  try {
+    if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then extract its text.');
+    const count = pdf.countPages();
+    if (count > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    const pages: string[] = [];
+    let chars = 0;
+    for (let i = 0; i < count; i++) {
+      const page = pdf.loadPage(i);
+      try {
+        const stext = page.toStructuredText('');
+        try {
+          const text = cleanText(stext.asText());
+          chars += text.replace(/\s/g, '').length;
+          pages.push(text);
+        } finally {
+          stext.destroy();
+        }
+      } finally {
+        page.destroy();
+      }
+    }
+    return { pages, chars };
+  } finally {
+    pdf.destroy();
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
-import { compress, fillForm, inspect, open, protect, readForm, repair, unlock } from '../../src/engines/mupdf-ops';
+import { cleanText, compress, extractText, fillForm, inspect, open, protect, readForm, repair, unlock } from '../../src/engines/mupdf-ops';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
@@ -269,5 +269,39 @@ describe('forms', async () => {
   it('finds no fields in an ordinary PDF and refuses password files', () => {
     expect(readForm(mupdf, makePdf(2))).toEqual([]);
     expect(() => readForm(mupdf, files.find((f) => f.name === '14-password-aes256-is-test.pdf')!.bytes)).toThrow('Unlock it first');
+  });
+});
+
+describe('extractText', async () => {
+  const files: { name: string; bytes: Uint8Array }[] = await buildTestFiles();
+  const get = (name: string) => files.find((f) => f.name === name)!.bytes;
+
+  it('reads the text of every page, in page order', () => {
+    const { pages, chars } = extractText(mupdf, get('02-five-pages.pdf'));
+    expect(pages).toHaveLength(5);
+    pages.forEach((text, i) => expect(text).toContain(`Page ${i + 1} of 5`));
+    expect(chars).toBeGreaterThan(0);
+  });
+
+  it('reads rotated pages too', () => {
+    const { pages } = extractText(mupdf, get('07-rotated-pages.pdf'));
+    pages.forEach((text, i) => expect(text).toContain(`Page ${i + 1} of ${pages.length}`));
+  });
+
+  it('finds no text in a scanned file', () => {
+    expect(extractText(mupdf, get('17-scanned-heavy.pdf')).chars).toBe(0);
+  });
+
+  it('gives empty pages for a PDF with no content', () => {
+    expect(extractText(mupdf, makePdf(3))).toEqual({ pages: ['', '', ''], chars: 0 });
+  });
+
+  it('reads a restricted file, and asks for password files to be unlocked first', () => {
+    expect(extractText(mupdf, get('18-restricted-owner-password-is-owner-test.pdf')).chars).toBeGreaterThan(0);
+    expect(() => extractText(mupdf, get('14-password-aes256-is-test.pdf'))).toThrow('Unlock it first');
+  });
+
+  it('removes control characters and hidden direction marks', () => {
+    expect(cleanText('a\u0000b\u0007c\r\nd\re\tf\u202eg\u2066h\u2069  \n\n')).toBe('abc\nd\ne\tfgh');
   });
 });
