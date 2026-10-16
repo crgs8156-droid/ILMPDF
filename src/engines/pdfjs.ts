@@ -89,6 +89,10 @@ export async function renderPage(
     const viewport = page.getViewport({ scale: (cssWidth / base.width) * dpr, rotation: (page.rotate + rotation) % 360 });
     canvas.width = Math.max(1, Math.floor(viewport.width));
     canvas.height = Math.max(1, Math.floor(viewport.height));
+    // The canvas has extra pixels on Retina screens; show it at cssWidth so the
+    // preview is the same size on every screen. Set through CSSOM, which the
+    // production CSP allows (inline style attributes are blocked).
+    canvas.style.width = `${cssWidth}px`;
     await page.render({ canvas, viewport }).promise;
   } finally {
     page.cleanup();
