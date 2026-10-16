@@ -2,7 +2,7 @@
 // own copy of each file; every job receives fresh copies that are
 // transferred (moved, not cloned) into the worker.
 import type { CropBox, ImageInput, NumberPosition, PagePlan, PageSize, SignaturePlacement } from '../engines/pdflib-ops';
-import type { CompressLevel, FormField, FormValues, PdfInfo, ProtectOptions } from '../engines/mupdf-ops';
+import type { CompressLevel, FormField, FormValues, PdfInfo, ProtectOptions, TextResult } from '../engines/mupdf-ops';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -32,7 +32,8 @@ export type MupdfJob =
   | { op: 'repair'; file: Uint8Array }
   | { op: 'compress'; file: Uint8Array; level: CompressLevel }
   | { op: 'readForm'; file: Uint8Array }
-  | { op: 'fillForm'; file: Uint8Array; values: FormValues; flatten: boolean };
+  | { op: 'fillForm'; file: Uint8Array; values: FormValues; flatten: boolean }
+  | { op: 'extractText'; file: Uint8Array };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
@@ -44,6 +45,7 @@ export type JobOutput = {
   repaired?: boolean;
   sizes?: { before: number; after: number; images: number };
   fields?: FormField[];
+  text?: TextResult;
 };
 
 export type JobResult = ({ ok: true } & JobOutput & { id: string }) | { id: string; ok: false; error: string };

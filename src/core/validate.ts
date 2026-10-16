@@ -21,7 +21,7 @@ export function checkFileMeta(name: string, size: number): FileCheck {
 }
 
 // Output names are built from user file names; keep them plain and short.
-export function safeFileName(name: string, suffix = ''): string {
+export function safeFileName(name: string, suffix = '', ext = '.pdf'): string {
   const base = name.replace(/\.pdf$/i, '');
   const cleaned = base
     .normalize('NFKC')
@@ -29,7 +29,7 @@ export function safeFileName(name: string, suffix = ''): string {
     .replace(/^\.+/, '')
     .trim()
     .slice(0, 120);
-  return `${cleaned || 'document'}${suffix}.pdf`;
+  return `${cleaned || 'document'}${suffix}${ext}`;
 }
 
 export function formatBytes(n: number): string {

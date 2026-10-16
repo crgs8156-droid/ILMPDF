@@ -50,6 +50,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { fields: ops.readForm(mupdf, job.file) };
     case 'fillForm':
       return { files: [ops.fillForm(mupdf, job.file, job.values, job.flatten)] };
+    case 'extractText':
+      return { text: ops.extractText(mupdf, job.file) };
   }
 }
 

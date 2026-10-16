@@ -14,6 +14,7 @@ import CompressTool from './CompressTool.svelte';
 import FormsTool from './FormsTool.svelte';
 import SignTool from './SignTool.svelte';
 import CropTool from './CropTool.svelte';
+import PdfToTextTool from './PdfToTextTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -23,6 +24,7 @@ export const TOOLS: Tool[] = [
   { id: 'organize', name: 'Organize pages', blurb: 'Reorder, rotate, delete or extract pages with thumbnails.', group: 'Organize', component: OrganizeTool },
   { id: 'images-to-pdf', name: 'Images to PDF', blurb: 'Turn JPG, PNG, HEIC or WebP images into a PDF.', group: 'Convert', component: ImagesToPdfTool },
   { id: 'pdf-to-images', name: 'PDF to images', blurb: 'Save pages as PNG or JPG images.', group: 'Convert', component: PdfToImagesTool },
+  { id: 'pdf-to-text', name: 'PDF to text', blurb: 'Save the text of a PDF as a plain .txt file.', group: 'Convert', component: PdfToTextTool },
   { id: 'crop', name: 'Crop pages', blurb: 'Trim the edges of pages by drawing the area to keep.', group: 'Edit', component: CropTool },
   { id: 'page-numbers', name: 'Page numbers', blurb: 'Stamp page numbers on every page.', group: 'Edit', component: PageNumbersTool },
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
