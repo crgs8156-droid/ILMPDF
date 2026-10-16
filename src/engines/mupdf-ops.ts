@@ -42,11 +42,16 @@ export function inspect(mupdf: Mupdf, bytes: Uint8Array): PdfInfo {
     const needsPassword = pdf.needsPassword();
     const encrypted = isEncrypted(mupdf, pdf);
     const pages = needsPassword ? 0 : pdf.countPages();
-    if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    checkPageLimit(pages);
     return { pages, encrypted, needsPassword };
   } finally {
     pdf.destroy();
   }
+}
+
+/** Refuses PDFs above the page limit, with the same message in every tool. */
+function checkPageLimit(pages: number): void {
+  if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
 }
 
 // authenticatePassword() result bits (MuPDF): 2 = user password, 4 = owner password.
@@ -73,6 +78,8 @@ export function unlock(mupdf: Mupdf, bytes: Uint8Array, password: string): Uint8
         'This PDF opens without a password but has restrictions (such as no printing). Enter its owner password to remove them.',
       );
     }
+    // Pages can only be counted once the password is accepted.
+    checkPageLimit(pdf.countPages());
     return new Uint8Array(pdf.saveToBuffer('decrypt,garbage=compact').asUint8Array());
   } finally {
     pdf.destroy();
@@ -96,6 +103,7 @@ export function protect(mupdf: Mupdf, bytes: Uint8Array, opts: ProtectOptions): 
   const pdf = open(mupdf, bytes);
   try {
     if (pdf.needsPassword()) throw new UserFacingError('This PDF already has a password. Unlock it first.');
+    checkPageLimit(pdf.countPages());
     let permissions = PERM_BASE | PERM.accessibility;
     if (opts.allowPrint) permissions |= PERM.print | PERM.printHigh;
     if (opts.allowCopy) permissions |= PERM.copy;
@@ -141,7 +149,7 @@ export function repair(mupdf: Mupdf, bytes: Uint8Array): RepairResult {
       // A page tree MuPDF cannot follow counts as no pages recovered.
     }
     if (pages === 0) throw new UserFacingError('This PDF is too damaged to repair: no pages could be recovered.');
-    if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    checkPageLimit(pages);
     let out: MuPDF.Buffer;
     try {
       // Any password restrictions (no printing, etc.) are kept as they were.
@@ -176,7 +184,7 @@ export function compress(mupdf: Mupdf, bytes: Uint8Array, level: CompressLevel):
   try {
     if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then compress it.');
     const pages = pdf.countPages();
-    if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    checkPageLimit(pages);
     const settings = LEVELS[level];
     const images = settings ? recompressImages(mupdf, pdf, largestPageInches(pdf, pages) * settings.dpi, settings.quality) : 0;
     const out = pdf.saveToBuffer({
@@ -399,7 +407,7 @@ function openForForm(mupdf: Mupdf, bytes: Uint8Array): MuPDF.PDFDocument {
 
 function eachWidget(pdf: MuPDF.PDFDocument, fn: (widget: MuPDF.PDFWidget, name: string) => void) {
   const pages = pdf.countPages();
-  if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+  checkPageLimit(pages);
   for (let i = 0; i < pages; i++) {
     const page = pdf.loadPage(i);
     for (const widget of page.getWidgets()) fn(widget, widget.getName());
@@ -485,7 +493,7 @@ export function extractText(mupdf: Mupdf, bytes: Uint8Array): TextResult {
   try {
     if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then extract its text.');
     const count = pdf.countPages();
-    if (count > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
+    checkPageLimit(count);
     const pages: string[] = [];
     let chars = 0;
     for (let i = 0; i < count; i++) {

@@ -287,7 +287,7 @@ export async function buildTestFiles() {
     },
     { name: '08-with-metadata.pdf', purpose: 'Has author "Jane Example", title, subject and keywords: remove metadata.', bytes: metadata },
     { name: '09-large-images.pdf', purpose: 'Two pages that are big images: PDF to images, file size.', bytes: await largeImagesPdf() },
-    { name: '10-password-is-test.pdf', purpose: 'Really encrypted (RC4 128-bit). Password: test. ILMPDF should refuse it politely until Phase 2.', bytes: encryptedPdf('test', 'owner-test') },
+    { name: '10-password-is-test.pdf', purpose: 'Really encrypted (RC4 128-bit). Password: test. Unlock should open it with this password.', bytes: encryptedPdf('test', 'owner-test') },
     { name: '11-damaged.pdf', purpose: 'Cut off part way: should fail with a clear message, never a crash.', bytes: damaged },
     { name: '12-not-really-a-pdf.pdf', purpose: 'A text file with a .pdf name: should be rejected before any engine sees it.', bytes: new TextEncoder().encode('This is plain text pretending to be a PDF.\n') },
     {

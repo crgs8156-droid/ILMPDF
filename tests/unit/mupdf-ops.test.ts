@@ -57,6 +57,14 @@ describe('unlock', async () => {
   it('says so when a PDF has no password', () => {
     expect(() => unlock(mupdf, makePdf(2), 'x')).toThrow(/isn't password-protected/);
   });
+
+  it('refuses a PDF over the page limit once the password is accepted', () => {
+    // Encrypted straight with MuPDF, because protect() itself now refuses it.
+    const doc = open(mupdf, makePdf(5001));
+    const locked = new Uint8Array(doc.saveToBuffer({ encrypt: 'aes-256', 'user-password': 'test', 'owner-password': 'owner' }).asUint8Array());
+    doc.destroy();
+    expect(() => unlock(mupdf, locked, 'test')).toThrow(/more than 5000 pages/);
+  });
 });
 
 describe('protect', () => {
@@ -101,6 +109,10 @@ describe('protect', () => {
     expect(() => protect(mupdf, makePdf(1), { password: '', ...all })).toThrow('Enter a password.');
     const locked = protect(mupdf, makePdf(1), { password: 'a', ...all });
     expect(() => protect(mupdf, locked, { password: 'b', ...all })).toThrow(/already has a password/);
+  });
+
+  it('refuses a PDF over the page limit', () => {
+    expect(() => protect(mupdf, makePdf(5001), { password: 'a', ...all })).toThrow(/more than 5000 pages/);
   });
 });
 
