@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as mupdf from 'mupdf';
 import { PDFDocument, degrees } from 'pdf-lib';
 import { annotate, type NewAnnotation } from '../../src/engines/mupdf-ops';
-import { MAX_ANNOTATIONS } from '../../src/core/limits';
+import { MAX_ANNOTATIONS, MAX_INK_POINTS } from '../../src/core/limits';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
@@ -80,6 +80,34 @@ describe('annotate', () => {
     expect(x1).toBeLessThanOrEqual(200);
     expect(x0).toBeGreaterThanOrEqual(0);
     expect(y0).toBeGreaterThanOrEqual(0);
+  });
+
+  it('saves an arrow as a line annotation with an arrowhead at its end', () => {
+    const [arrow] = readBack(annotate(mupdf, makePdf(1), [{ ...base, page: 0, kind: 'arrow' }]));
+    expect(arrow!.type).toBe('Line');
+    expect(arrow!.obj).toMatch(/\/LE\s*\[\s*\/None\s*\/OpenArrow\s*\]/);
+  });
+
+  it('saves a freehand drawing as an ink annotation along its points', () => {
+    // On the 200 x 300 page: from (20, 30) to (100, 90) to (180, 30), as shown from the top-left.
+    const points: [number, number][] = [
+      [0.1, 0.1],
+      [0.5, 0.3],
+      [0.9, 0.1],
+    ];
+    const [ink] = readBack(annotate(mupdf, makePdf(1), [{ ...base, page: 0, kind: 'ink', points }]));
+    expect(ink!.type).toBe('Ink');
+    const nums = /\/InkList\s*\[\s*\[([^\]]*)\]/.exec(ink!.obj)![1]!.trim().split(/\s+/).map(Number);
+    // PDF y runs upwards: 10% down = 270, 30% down = 210.
+    expect(nums.map((n) => Math.round(n))).toEqual([20, 270, 100, 210, 180, 270]);
+  });
+
+  it('refuses freehand drawings that are too short or too long', () => {
+    const pdf = makePdf(1);
+    expect(() => annotate(mupdf, pdf, [{ ...base, page: 0, kind: 'ink', points: [[0.1, 0.1]] }])).toThrow('A drawing is too short.');
+    expect(() => annotate(mupdf, pdf, [{ ...base, page: 0, kind: 'ink' }])).toThrow('A drawing is too short.');
+    const long = Array.from({ length: MAX_INK_POINTS + 1 }, (_, i): [number, number] => [i / MAX_INK_POINTS, 0.5]);
+    expect(() => annotate(mupdf, pdf, [{ ...base, page: 0, kind: 'ink', points: long }])).toThrow(/at most/);
   });
 
   it('removes hidden control characters from text', () => {
