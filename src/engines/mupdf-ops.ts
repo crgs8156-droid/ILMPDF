@@ -2,7 +2,7 @@
 // The mupdf module is passed in so this file never loads the 10 MB engine
 // by itself (and so unit tests can hand in the Node build).
 import type * as MuPDF from 'mupdf';
-import { MAX_ANNOTATIONS, MAX_PAGES } from '../core/limits';
+import { MAX_ANNOTATIONS, MAX_INK_POINTS, MAX_PAGES } from '../core/limits';
 import { UserFacingError } from './pdflib-ops';
 
 /**
@@ -518,7 +518,7 @@ export function extractText(mupdf: Mupdf, bytes: Uint8Array): TextResult {
 }
 
 /** The kinds of annotation the Annotate tool can add. */
-export type AnnotKind = 'text' | 'highlight' | 'rect' | 'line' | 'note';
+export type AnnotKind = 'text' | 'highlight' | 'rect' | 'line' | 'arrow' | 'ink' | 'note';
 
 /**
  * One annotation to add. Positions are fractions (0 to 1) of the page as it
@@ -539,6 +539,11 @@ export type NewAnnotation = {
   text?: string;
   /** Text box font size, in points. */
   fontSize?: number;
+  /**
+   * A freehand ("ink") drawing: one stroke of points, each a fraction of the
+   * page like x1/y1. The box (x1, y1)-(x2, y2) is ignored for ink.
+   */
+  points?: [number, number][];
 };
 
 const MAX_ANNOT_TEXT = 5_000;
@@ -635,10 +640,29 @@ function addOne(page: MuPDF.PDFPage, item: NewAnnotation, w: number, h: number) 
       annot.update();
       return;
     }
-    case 'line': {
-      if (Math.hypot(x2 - x1, y2 - y1) < 2) throw new UserFacingError('A line is too short.');
+    case 'line':
+    case 'arrow': {
+      const name = item.kind === 'arrow' ? 'An arrow' : 'A line';
+      if (Math.hypot(x2 - x1, y2 - y1) < 2) throw new UserFacingError(`${name} is too short.`);
       const annot = page.createAnnotation('Line');
       annot.setLine([x1, y1], [x2, y2]);
+      // An arrow is a line annotation with an open arrowhead at its end, so
+      // Preview and Acrobat still treat it as a normal, editable line.
+      if (item.kind === 'arrow') annot.setLineEndingStyles('None', 'OpenArrow');
+      annot.setColor(color);
+      annot.setBorderWidth(2);
+      annot.update();
+      return;
+    }
+    case 'ink': {
+      const raw = Array.isArray(item.points) ? item.points : [];
+      if (raw.length > MAX_INK_POINTS) throw new UserFacingError(`A drawing can have at most ${MAX_INK_POINTS} points.`);
+      const stroke = raw
+        .filter((pt) => Array.isArray(pt) && pt.length === 2)
+        .map(([px, py]): [number, number] => [unit(px) * w, unit(py) * h]);
+      if (stroke.length < 2) throw new UserFacingError('A drawing is too short.');
+      const annot = page.createAnnotation('Ink');
+      annot.setInkList([stroke]);
       annot.setColor(color);
       annot.setBorderWidth(2);
       annot.update();

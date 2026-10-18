@@ -5,3 +5,4 @@ export const MAX_FILES = 50;
 export const MAX_PAGES = 5000;
 export const JOB_TIMEOUT_MS = 300_000; // 5 minutes for large merges
 export const MAX_ANNOTATIONS = 500; // per Annotate job
+export const MAX_INK_POINTS = 2_000; // per freehand stroke, so a drawing can't bloat the file
