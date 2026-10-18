@@ -5,7 +5,7 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
-  import type { SanitizeReport } from '../engines/mupdf-ops';
+  import { describeRemoved } from '../core/clean';
 
   type Picked = { name: string; size: number; bytes: Uint8Array };
 
@@ -29,28 +29,13 @@
     file = { name: picked.name, size: picked.size, bytes };
   }
 
-  const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-  /** Turns the counts into a short list such as "2 scripts, 1 attached file". */
-  function describe(r: SanitizeReport): string {
-    const parts = [
-      r.scripts && plural(r.scripts, 'script', 'scripts'),
-      r.autoActions && plural(r.autoActions, 'automatic action', 'automatic actions'),
-      r.openers && plural(r.openers, 'action that opens programs or other files', 'actions that open programs or other files'),
-      r.dataActions && plural(r.dataActions, 'form action that sends or loads data', 'form actions that send or load data'),
-      r.attachments && plural(r.attachments, 'attached file', 'attached files'),
-      r.xfa && 'an XFA form layer',
-    ].filter(Boolean);
-    return parts.join(', ');
-  }
-
   function clean(f: Picked) {
     job.run(async () => {
       const out = await runMupdfJob({ op: 'sanitize', file: copyBytes(f.bytes) });
       const cleaned = out.files?.[0];
       if (!cleaned) return 'Nothing to remove: this PDF has no scripts, automatic actions or attached files. No new file was saved.';
       saveBytes(cleaned, safeFileName(f.name, '-clean'));
-      return `Removed ${describe(out.removed!)}. Saved a clean copy; the original file is unchanged.`;
+      return `Removed ${describeRemoved(out.removed!)}. Saved a clean copy; the original file is unchanged.`;
     });
   }
 

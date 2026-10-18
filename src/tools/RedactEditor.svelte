@@ -8,6 +8,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { RedactBox } from '../engines/mupdf-ops';
 
   type Props = { file: PdfFile };
@@ -41,6 +43,7 @@
   let unchecked = $state<string[]>([]);
   const finder = new ToolRun();
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   let closed = false;
   openPdf(initial.bytes)
@@ -123,18 +126,21 @@
     // Only searches that still have a marked match count as redacted text.
     const phrases = [...new Set(boxes.flatMap((b) => (b.term ? [b.term] : [])))];
     const options = { stripMetadata, removeAllAttachments, phrases };
+    const clean = alsoClean;
     unchecked = [];
     job.run(async () => {
       const out = await runMupdfJob({ op: 'redact', file: copyBytes(initial.bytes), boxes: chosen, options });
-      saveBytes(out.files![0]!, safeFileName(initial.name, '-redacted'));
+      const { files: [saved], note } = await cleanIf(clean, out.files!);
+      saveBytes(saved!, safeFileName(initial.name, '-redacted'));
       const count = (key: string) => Number(out.meta?.[key] ?? 0);
       const extras = [
         count('bookmarks') > 0 ? plural(count('bookmarks'), 'bookmark') : '',
         count('attachments') > 0 ? plural(count('attachments'), 'attached file') : '',
       ].filter(Boolean);
       const alsoRemoved = extras.length > 0 ? ` Also removed ${extras.join(' and ')} that mentioned the redacted text.` : '';
-      unchecked = (out.unchecked ?? []).map((name) => `Kept "${name}": this attached file can't be checked for the redacted text.`);
-      return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(count('pages'), 'page')} and saved a new copy.${alsoRemoved} Open it and check it before you share it.`;
+      // Removing scripts also removes every attached file, so none is left to warn about.
+      if (!clean) unchecked = (out.unchecked ?? []).map((name) => `Kept "${name}": this attached file can't be checked for the redacted text.`);
+      return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(count('pages'), 'page')} and saved a new copy.${alsoRemoved}${note} Open it and check it before you share it.`;
     });
   }
 </script>
@@ -223,6 +229,7 @@
     are removed. Attached files that can't be read as text, such as Word files or pictures, are kept and named after
     redacting.
   </p>
+  <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button type="button" disabled={job.busy || boxes.length === 0} onclick={apply} data-testid="run">
       {job.busy ? 'Redacting…' : 'Redact and save'}

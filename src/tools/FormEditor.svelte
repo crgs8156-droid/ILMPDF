@@ -6,6 +6,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { FormField, FormValues } from '../engines/mupdf-ops';
 
   // Field names and labels come from the PDF: they are shown only through
@@ -17,6 +19,7 @@
   let flatten = $state(false);
   const reading = new ToolRun();
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   // Read the fields once, when this file is shown.
   onMount(() => {
@@ -34,10 +37,11 @@
     const flat = flatten;
     job.run(async () => {
       const out = await runMupdfJob({ op: 'fillForm', file: copyBytes(file.bytes), values, flatten: flat });
-      saveBytes(out.files![0]!, safeFileName(file.name, flat ? '-flattened' : '-filled'));
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(file.name, flat ? '-flattened' : '-filled'));
       return flat
-        ? 'Saved a flattened copy: the answers are now part of the pages and can no longer be edited.'
-        : 'Saved a filled copy. Its fields can still be edited.';
+        ? `Saved a flattened copy: the answers are now part of the pages and can no longer be edited.${note}`
+        : `Saved a filled copy. Its fields can still be edited.${note}`;
     });
   }
 </script>
@@ -96,6 +100,7 @@
       <input type="checkbox" bind:checked={flatten} data-testid="flatten" />
       Flatten: make the answers part of the page so they can't be changed
     </label>
+    <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="submit" disabled={job.busy} data-testid="run">{job.busy ? 'Saving…' : 'Save filled PDF'}</button>
     </div>

@@ -9,6 +9,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { PagePlan } from '../engines/pdflib-ops';
 
   type Props = { file: PdfFile };
@@ -25,6 +27,7 @@
   let previewError = $state<string[]>([]);
   let dragFrom = $state<number | null>(null);
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   let closed = false;
   openPdf(initial.bytes)
@@ -51,16 +54,18 @@
   function saveAll() {
     job.run(async () => {
       const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan: plan(cards) });
-      saveBytes(out.files![0]!, safeFileName(file.name, '-organized'));
-      return `Saved ${cards.length} pages.`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(file.name, '-organized'));
+      return `Saved ${cards.length} pages.${note}`;
     });
   }
   function extractSelected() {
     job.run(async () => {
       const chosen = cards.filter((c) => c.selected);
       const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan: plan(chosen) });
-      saveBytes(out.files![0]!, safeFileName(file.name, '-extract'));
-      return `Extracted ${chosen.length} page${chosen.length === 1 ? '' : 's'}.`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(file.name, '-extract'));
+      return `Extracted ${chosen.length} page${chosen.length === 1 ? '' : 's'}.${note}`;
     });
   }
 </script>
@@ -111,6 +116,7 @@
   {/each}
 </ul>
 
+<RemoveScriptsOption bind:checked={alsoClean} />
 <div class="actions">
   <button disabled={job.busy} onclick={saveAll} data-testid="run">{job.busy ? 'Working…' : 'Save organized PDF'}</button>
   <button class="quiet" disabled={job.busy || selectedCount === 0} onclick={extractSelected} data-testid="extract">

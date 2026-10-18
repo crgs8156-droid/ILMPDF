@@ -6,6 +6,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
   // Held only in this component's memory; cleared once the file is saved.
   let password = $state('');
@@ -13,6 +15,7 @@
   let allowPrint = $state(true);
   let allowCopy = $state(true);
   let allowEdit = $state(true);
+  let alsoClean = $state(false);
   const job = new ToolRun();
 
   const mismatch = $derived(confirm.length > 0 && confirm !== password);
@@ -22,15 +25,18 @@
   function protect(file: PdfFile) {
     const typed = password;
     job.run(async () => {
+      // Cleaning has to happen before the password goes on: a locked file
+      // can't be opened to clean it.
+      const { files: [source], note } = await cleanIf(alsoClean, [copyBytes(file.bytes)]);
       const out = await runMupdfJob({
         op: 'protect',
-        file: copyBytes(file.bytes),
+        file: source!,
         opts: { password: typed, allowPrint, allowCopy, allowEdit },
       });
       password = '';
       confirm = '';
       saveBytes(out.files![0]!, safeFileName(file.name, '-protected'));
-      return 'Saved a password-protected copy (AES-256). Keep the password safe: it cannot be recovered.';
+      return `Saved a password-protected copy (AES-256).${note} Keep the password safe: it cannot be recovered.`;
     });
   }
 </script>
@@ -66,6 +72,7 @@
         Uses AES-256 encryption. The password is the only way in, and ILMPDF never stores it. Most PDF apps respect the
         print, copy and edit settings, but they are a request, not a lock.
       </p>
+      <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button type="submit" disabled={job.busy || !ready} data-testid="run">{job.busy ? 'Protecting…' : 'Protect PDF'}</button>
       </div>
