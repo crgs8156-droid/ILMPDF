@@ -5,6 +5,8 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { PdfInfo } from '../engines/mupdf-ops';
 
   type Locked = { name: string; size: number; bytes: Uint8Array; info: PdfInfo };
@@ -15,6 +17,7 @@
   // Held only in this component's memory; cleared after every attempt.
   let password = $state('');
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   // pdf-lib refuses encrypted files, so this tool reads them with MuPDF instead.
   async function pick(files: File[]) {
@@ -43,8 +46,9 @@
     password = '';
     job.run(async () => {
       const out = await runMupdfJob({ op: 'unlock', file: copyBytes(f.bytes), password: typed });
-      saveBytes(out.files![0]!, safeFileName(f.name, '-unlocked'));
-      return 'Saved an unlocked copy. The original file is unchanged.';
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(f.name, '-unlocked'));
+      return `Saved an unlocked copy. The original file is unchanged.${note}`;
     });
   }
 
@@ -86,6 +90,7 @@
     <p class="muted">
       Use a password you already know. ILMPDF never guesses or cracks passwords, and never stores what you type.
     </p>
+    <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="submit" disabled={job.busy || !password} data-testid="run">{job.busy ? 'Unlocking…' : 'Unlock PDF'}</button>
     </div>

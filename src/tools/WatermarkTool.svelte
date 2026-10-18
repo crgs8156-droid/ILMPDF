@@ -6,12 +6,15 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
   let text = $state('CONFIDENTIAL');
   let fontSize = $state(60);
   let opacity = $state(20);
   let diagonal = $state(true);
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   function apply(file: PdfFile) {
     job.run(async () => {
@@ -20,8 +23,9 @@
         file: copyBytes(file.bytes),
         opts: { text, fontSize: Number(fontSize), opacity: Number(opacity) / 100, diagonal },
       });
-      saveBytes(out.files![0]!, safeFileName(file.name, '-watermarked'));
-      return `Watermarked ${file.pages} pages.`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(file.name, '-watermarked'));
+      return `Watermarked ${file.pages} pages.${note}`;
     });
   }
 </script>
@@ -36,6 +40,7 @@
         <label class="check"><input type="checkbox" bind:checked={diagonal} /> Diagonal</label>
       </div>
       <p class="muted">Uses the built-in Helvetica font, which covers English letters, digits and basic punctuation.</p>
+      <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => apply(file)} data-testid="run">{job.busy ? 'Working…' : 'Add watermark'}</button>
       </div>

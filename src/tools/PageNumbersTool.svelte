@@ -6,6 +6,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { NumberPosition } from '../engines/pdflib-ops';
 
   let position = $state<NumberPosition>('bottom-center');
@@ -13,6 +15,7 @@
   let startAt = $state(1);
   let fontSize = $state(11);
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   function apply(file: PdfFile) {
     job.run(async () => {
@@ -21,8 +24,9 @@
         file: copyBytes(file.bytes),
         opts: { position, format, startAt: Number(startAt), fontSize: Number(fontSize) },
       });
-      saveBytes(out.files![0]!, safeFileName(file.name, '-numbered'));
-      return `Numbered ${file.pages} pages.`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(file.name, '-numbered'));
+      return `Numbered ${file.pages} pages.${note}`;
     });
   }
 </script>
@@ -48,6 +52,7 @@
         <label class="field">Start at <input type="number" min="0" bind:value={startAt} /></label>
         <label class="field">Text size <input type="number" min="6" max="48" bind:value={fontSize} /></label>
       </div>
+      <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => apply(file)} data-testid="run">{job.busy ? 'Working…' : 'Add page numbers'}</button>
       </div>

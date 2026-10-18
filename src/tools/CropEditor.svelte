@@ -8,6 +8,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { CropBox } from '../engines/pdflib-ops';
 
   type Props = { file: PdfFile };
@@ -30,6 +32,7 @@
   let scope = $state<'page' | 'all'>('all');
   let dragFrom: [number, number] | null = null;
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   let closed = false;
   openPdf(initial.bytes)
@@ -87,8 +90,9 @@
     const chosen = { ...box };
     job.run(async () => {
       const out = await runPdfJob({ op: 'crop', file: copyBytes(initial.bytes), box: chosen, pages });
-      saveBytes(out.files![0]!, safeFileName(initial.name, '-cropped'));
-      return `Saved a cropped copy (${scope === 'all' ? 'every page' : `page ${pageIndex + 1}`}).`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(initial.name, '-cropped'));
+      return `Saved a cropped copy (${scope === 'all' ? 'every page' : `page ${pageIndex + 1}`}).${note}`;
     });
   }
 </script>
@@ -135,6 +139,7 @@
     Cropping hides the rest of the page, but the hidden part is still inside the file. To remove something for good,
     use the Redact tool.
   </p>
+  <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button type="button" disabled={job.busy} onclick={crop} data-testid="run">{job.busy ? 'Cropping…' : 'Crop PDF'}</button>
   </div>
