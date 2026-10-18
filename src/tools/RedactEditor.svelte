@@ -8,6 +8,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { RedactBox } from '../engines/mupdf-ops';
 
   type Props = { file: PdfFile };
@@ -37,6 +39,7 @@
   let stripMetadata = $state(true);
   const finder = new ToolRun();
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   let closed = false;
   openPdf(initial.bytes)
@@ -116,9 +119,10 @@
     const strip = stripMetadata;
     job.run(async () => {
       const out = await runMupdfJob({ op: 'redact', file: copyBytes(initial.bytes), boxes: chosen, stripMetadata: strip });
-      saveBytes(out.files![0]!, safeFileName(initial.name, '-redacted'));
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(initial.name, '-redacted'));
       const pages = Number(out.meta?.['pages'] ?? 0);
-      return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(pages, 'page')} and saved a new copy. Open it and check it before you share it.`;
+      return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(pages, 'page')} and saved a new copy.${note} Open it and check it before you share it.`;
     });
   }
 </script>
@@ -202,6 +206,7 @@
     not filled-in form fields: draw a box over a field to remove it. Bookmarks and attached files are not changed, so
     check them if they might mention what you redact.
   </p>
+  <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button type="button" disabled={job.busy || boxes.length === 0} onclick={apply} data-testid="run">
       {job.busy ? 'Redacting…' : 'Redact and save'}

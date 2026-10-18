@@ -6,6 +6,8 @@
   import { saveBytes } from '../core/save';
   import { formatBytes, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf, cleanNote, describeRemoved, removeScripts } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { CompressLevel } from '../engines/mupdf-ops';
 
   const LEVELS: { id: CompressLevel; name: string; detail: string }[] = [
@@ -15,6 +17,7 @@
   ];
 
   let level = $state<CompressLevel>('recommended');
+  let alsoClean = $state(false);
   const job = new ToolRun();
 
   function compress(file: PdfFile) {
@@ -22,11 +25,18 @@
       const out = await runMupdfJob({ op: 'compress', file: copyBytes(file.bytes), level });
       const { before, after } = out.sizes!;
       if (after >= before) {
-        return "This PDF is already compact: this level couldn't make it smaller, so no file was saved. Try a stronger level.";
+        const tip = "This PDF is already compact: this level couldn't make it smaller. Try a stronger level.";
+        if (!alsoClean) return tip.replace('smaller.', 'smaller, so no file was saved.');
+        // Scripts were still asked to go, so clean the original instead.
+        const { files: [plain], removed } = await removeScripts([copyBytes(file.bytes)]);
+        if (!describeRemoved(removed)) return `${tip} No scripts or attached files were found either, so no file was saved.`;
+        saveBytes(plain!, safeFileName(file.name, '-clean'));
+        return `${tip}${cleanNote(removed)} Saved that as a clean copy.`;
       }
-      saveBytes(out.files![0]!, safeFileName(file.name, '-compressed'));
+      const { files: [small], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(small!, safeFileName(file.name, '-compressed'));
       const saved = Math.round((1 - after / before) * 100);
-      return `Saved a compressed copy: ${formatBytes(before)} → ${formatBytes(after)} (${saved}% smaller).`;
+      return `Saved a compressed copy: ${formatBytes(before)} → ${formatBytes(after)} (${saved}% smaller).${note}`;
     });
   }
 </script>
@@ -43,6 +53,7 @@
           </label>
         {/each}
       </fieldset>
+      <RemoveScriptsOption bind:checked={alsoClean} />
       <p class="muted">The original file is unchanged. Check the result before deleting the original.</p>
       <div class="actions">
         <button type="button" disabled={job.busy} onclick={() => compress(file)} data-testid="run">

@@ -6,8 +6,11 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   async function read(file: PdfFile): Promise<[string, string][]> {
     const out = await runPdfJob({ op: 'readMetadata', file: copyBytes(file.bytes) });
@@ -17,8 +20,9 @@
   function strip(file: PdfFile) {
     job.run(async () => {
       const out = await runPdfJob({ op: 'stripMetadata', file: copyBytes(file.bytes) });
-      saveBytes(out.files![0]!, safeFileName(file.name, '-clean'));
-      return 'Saved a copy with the metadata removed.';
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(file.name, '-clean'));
+      return `Saved a copy with the metadata removed.${note}`;
     });
   }
 </script>
@@ -40,6 +44,7 @@
         <Notice messages={[err.message]} />
       {/await}
       <p class="muted">Removes title, author, subject, keywords, creating app, dates and XMP metadata. Page content is untouched.</p>
+      <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => strip(file)} data-testid="run">{job.busy ? 'Working…' : 'Remove metadata'}</button>
       </div>

@@ -7,10 +7,13 @@
   import { formatBytes } from '../core/validate';
   import { MAX_FILES } from '../core/limits';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
   let files = $state<PdfFile[]>([]);
   let rejected = $state<string[]>([]);
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   // Adds run one after another so files keep the order they were added in.
   let queue = Promise.resolve();
@@ -25,8 +28,9 @@
   function merge() {
     job.run(async () => {
       const out = await runPdfJob({ op: 'merge', files: files.map((f) => copyBytes(f.bytes)) });
-      saveBytes(out.files![0]!, 'merged.pdf');
-      return `Merged ${files.length} files. Saved merged.pdf.`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, 'merged.pdf');
+      return `Merged ${files.length} files. Saved merged.pdf.${note}`;
     });
   }
 </script>
@@ -50,6 +54,7 @@
       </li>
     {/each}
   </ol>
+  <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button disabled={files.length < 2 || job.busy} onclick={merge} data-testid="run">
       {job.busy ? 'Merging…' : `Merge ${files.length} PDFs`}

@@ -9,6 +9,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import { MAX_ANNOTATIONS } from '../core/limits';
   import type { AnnotKind, NewAnnotation } from '../engines/mupdf-ops';
 
@@ -70,6 +72,7 @@
   let draft = $state<{ from: [number, number]; to: [number, number] } | null>(null);
   let moving: { id: number; from: [number, number]; start: Item } | null = null;
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   const onPage = $derived(items.filter((i) => i.page === pageIndex));
   const current = $derived(items.find((i) => i.id === selected) ?? null);
@@ -264,8 +267,9 @@
     const list: NewAnnotation[] = items.map(({ id: _id, ...rest }) => ({ ...rest, color: [...rest.color] as Rgb }));
     job.run(async () => {
       const out = await runMupdfJob({ op: 'annotate', file: copyBytes(initial.bytes), items: list });
-      saveBytes(out.files![0]!, safeFileName(initial.name, '-annotated'));
-      return `Saved an annotated copy with ${list.length} ${list.length === 1 ? 'annotation' : 'annotations'}.`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(initial.name, '-annotated'));
+      return `Saved an annotated copy with ${list.length} ${list.length === 1 ? 'annotation' : 'annotations'}.${note}`;
     });
   }
 </script>
@@ -419,6 +423,7 @@
     {items.length} {items.length === 1 ? 'annotation' : 'annotations'} in total. They are saved as real PDF annotations, so
     Preview and Acrobat can still edit or remove them.
   </p>
+  <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button type="button" disabled={job.busy || items.length === 0} onclick={save} data-testid="run">
       {job.busy ? 'Saving…' : 'Save annotated PDF'}

@@ -10,6 +10,8 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { ImageInput, SignaturePlacement } from '../engines/pdflib-ops';
 
   type Props = { file: PdfFile };
@@ -36,6 +38,7 @@
   let everyPage = $state(false);
   let dragging = false;
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   const heightFrac = $derived(signature ? (width * signature.aspect) / pageAspect : 0);
 
@@ -118,8 +121,9 @@
     const image: ImageInput = { bytes: copyBytes(signature.bytes), kind: signature.kind };
     job.run(async () => {
       const out = await runPdfJob({ op: 'sign', file: copyBytes(initial.bytes), image, placements });
-      saveBytes(out.files![0]!, safeFileName(initial.name, '-signed'));
-      return `Saved a signed copy (${pages.length === 1 ? `page ${pages[0]! + 1}` : `${pages.length} pages`}).`;
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(initial.name, '-signed'));
+      return `Saved a signed copy (${pages.length === 1 ? `page ${pages[0]! + 1}` : `${pages.length} pages`}).${note}`;
     });
   }
 </script>
@@ -197,6 +201,7 @@
       This adds a picture of your signature. It is not a certified digital signature, so it doesn't prove who signed
       or lock the document.
     </p>
+    <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="button" disabled={job.busy} onclick={sign} data-testid="run">{job.busy ? 'Signing…' : 'Sign PDF'}</button>
     </div>

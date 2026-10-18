@@ -5,12 +5,15 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import { cleanIf } from '../core/clean';
+  import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
   type Picked = { name: string; size: number; bytes: Uint8Array };
 
   let file = $state<Picked | null>(null);
   let errors = $state<string[]>([]);
   const job = new ToolRun();
+  let alsoClean = $state(false);
 
   // The shared loader opens files with pdf-lib, which refuses many damaged
   // PDFs. This tool only checks the basics here and lets MuPDF (in its
@@ -30,11 +33,12 @@
   function repair(f: Picked) {
     job.run(async () => {
       const out = await runMupdfJob({ op: 'repair', file: copyBytes(f.bytes) });
-      saveBytes(out.files![0]!, safeFileName(f.name, '-repaired'));
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      saveBytes(saved!, safeFileName(f.name, '-repaired'));
       const pages = `${out.count} page${out.count === 1 ? '' : 's'}`;
       return out.repaired
-        ? `Repaired and saved a fixed copy with ${pages}. Check that nothing is missing: badly damaged parts can't always be recovered.`
-        : `No damage found. Saved a cleanly rewritten copy with ${pages}, which can still help apps that struggle with the original.`;
+        ? `Repaired and saved a fixed copy with ${pages}. Check that nothing is missing: badly damaged parts can't always be recovered.${note}`
+        : `No damage found. Saved a cleanly rewritten copy with ${pages}, which can still help apps that struggle with the original.${note}`;
     });
   }
 
@@ -58,6 +62,7 @@
       Rebuilds the file's internal index and rewrites it cleanly. The original file is unchanged. Password-protected PDFs
       need to be unlocked first.
     </p>
+    <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="button" disabled={job.busy} onclick={() => file && repair(file)} data-testid="run">
         {job.busy ? 'Repairing…' : 'Repair PDF'}
