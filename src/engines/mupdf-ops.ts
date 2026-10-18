@@ -667,69 +667,122 @@ function addOne(page: MuPDF.PDFPage, item: NewAnnotation, w: number, h: number) 
  * page rotation), the same way the Crop and Sign tools measure.
  */
 export type RedactBox = { page: number; x: number; y: number; width: number; height: number };
-export type RedactResult = { file: Uint8Array; boxes: number; pages: number };
+/**
+ * stripMetadata: also remove the document details and tagging.
+ * phrases: the words or phrases searched for with "Mark all". Together with
+ * the words under the boxes, they decide which bookmarks and attached files
+ * mention the redacted text and are removed.
+ * removeAllAttachments: remove every attached file, matching or not.
+ */
+export type RedactOptions = { stripMetadata?: boolean; phrases?: string[]; removeAllAttachments?: boolean };
+/**
+ * bookmarks and attachments: how many were removed. unchecked: the names of
+ * attached files that were kept because their contents could not be read to
+ * look for the redacted text (untrusted text from the PDF).
+ */
+export type RedactResult = { file: Uint8Array; boxes: number; pages: number; bookmarks: number; attachments: number; unchecked: string[] };
+/** fields: how many of the boxes are filled-in form fields. */
+export type FindResult = { boxes: RedactBox[]; fields: number };
 
 export const MAX_REDACT_BOXES = 10_000;
 const MAX_SEARCH = 200;
+const MAX_PHRASES = 100;
+const MAX_WORDS = 5_000;
+const MAX_BOOKMARKS = 10_000;
+const MAX_ATTACHMENTS = 1_000;
+const MAX_UNCHECKED_NAMES = 20;
 
 /**
  * Finds every place a word or phrase appears (ignoring upper/lower case and
- * accents) and
- * gives back one box per line of each match, ready to redact.
+ * accents) and gives back one box per line of each match, ready to redact.
+ * Filled-in text fields and lists whose value contains it are found too: the
+ * box then covers the whole field, so redacting removes the field.
  */
-export function findText(mupdf: Mupdf, bytes: Uint8Array, needle: string): RedactBox[] {
+export function findText(mupdf: Mupdf, bytes: Uint8Array, needle: string): FindResult {
   const text = needle.trim();
   if (!text) throw new UserFacingError('Type the text to find.');
   if (text.length > MAX_SEARCH) throw new UserFacingError(`Search for at most ${MAX_SEARCH} characters at a time.`);
+  const wanted = normalize(text);
   const pdf = openForRedaction(mupdf, bytes);
   try {
     const found: RedactBox[] = [];
+    let fields = 0;
+    const add = (page: number, view: ReturnType<typeof pageView>, rect: MuPDF.Rect) => {
+      if (found.length >= MAX_REDACT_BOXES) {
+        throw new UserFacingError(`That text appears more than ${MAX_REDACT_BOXES} times, which is above ILMPDF's limit.`);
+      }
+      // A point of margin all round, so the edges of letters are covered too.
+      found.push({ page, ...view.toFraction(padRect(rect, 1)) });
+    };
     const count = pdf.countPages();
     for (let i = 0; i < count; i++) {
       const page = pdf.loadPage(i);
       try {
         const view = pageView(page);
         for (const hit of page.search(text, 'ignore-case,ignore-diacritics')) {
-          for (const quad of hit) {
-            if (found.length >= MAX_REDACT_BOXES) {
-              throw new UserFacingError(`That text appears more than ${MAX_REDACT_BOXES} times, which is above ILMPDF's limit.`);
-            }
-            // A point of margin all round, so the edges of letters are covered too.
-            found.push({ page: i, ...view.toFraction(padRect(quadBounds(quad), 1)) });
+          for (const quad of hit) add(i, view, quadBounds(quad));
+        }
+        // A field's value is not part of the page text, so search it separately.
+        for (const widget of page.getWidgets()) {
+          const kind = kindOf(widget);
+          if ((kind === 'text' || kind === 'choice') && normalize(widget.getValue()).includes(wanted)) {
+            add(i, view, widget.getBounds());
+            fields++;
           }
         }
       } finally {
         page.destroy();
       }
     }
-    return found;
+    return { boxes: found, fields };
   } finally {
     pdf.destroy();
   }
 }
 
 /**
+ * Text made comparable: accents removed, lower case, spaces collapsed, so
+ * "Zoë  EXAMPLE" and "zoe example" match, as in the page search.
+ */
+function normalize(text: string): string {
+  return text.normalize('NFKD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Redacts for good: the text, image pixels and drawn shapes under each box
  * are deleted from the file (not just covered), then a black box is drawn in
  * their place. Links, comments and form fields that overlap a box are removed
- * too. With `stripMetadata`, the document's title, author and similar
- * details, and its accessibility tagging (which can hold copies of the page
- * text), are removed as well.
+ * too; a removed form field goes everywhere it is shown, not just under the
+ * box. Bookmarks and attached files that mention the redacted text (see
+ * RedactOptions) are removed as well. With `stripMetadata`, the document's
+ * title, author and similar details, and its accessibility tagging (which can
+ * hold copies of the page text), are removed too.
  *
  * Afterwards the saved file is opened again and checked: if any text is
- * still found under a box, the job fails rather than hand back an unsafe file.
+ * still found under a box, or a removed field, bookmark or attached file is
+ * still there, the job fails rather than hand back an unsafe file.
  */
-export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], stripMetadata: boolean): RedactResult {
+export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], options: RedactOptions = {}): RedactResult {
   const pdf = openForRedaction(mupdf, bytes);
   try {
     const count = pdf.countPages();
     const byPage = groupBoxes(boxes, count);
+    const phrases = new Set(
+      (options.phrases ?? [])
+        .slice(0, MAX_PHRASES)
+        .map((p) => normalize(p.slice(0, MAX_SEARCH)))
+        .filter((p) => p.length >= 3),
+    );
+    const removedFields = new Set<string>();
     for (const [index, areas] of byPage) {
       const page = pdf.loadPage(index);
       try {
         const view = pageView(page);
         const rects = areas.map((b) => view.toRect(b));
-        removeOverlapping(pdf, page, rects);
+        const words = new Set(wordsUnder(page, rects));
+        // A removed field's value is redacted text too.
+        for (const value of removeOverlapping(pdf, page, rects, removedFields)) addWords(value, words);
+        for (const word of words) if (phrases.size < MAX_PHRASES + MAX_WORDS) phrases.add(word);
         for (const rect of rects) {
           const annot = page.createAnnotation('Redact');
           annot.setRect(rect);
@@ -745,14 +798,377 @@ export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], stri
         page.destroy();
       }
     }
-    if (stripMetadata) removeMetadata(pdf);
+    removeFieldsEverywhere(pdf, removedFields);
+    const matches = (text: string) => mentions(text, phrases);
+    const bookmarks = removeBookmarks(pdf, matches);
+    const { removed: attachments, unchecked } = removeAttachments(mupdf, pdf, matches, options.removeAllAttachments === true);
+    if (options.stripMetadata) removeMetadata(pdf);
     // A full rewrite (never an incremental save), and "garbage" drops every
     // object no longer used, such as the page contents before redaction.
     const file = new Uint8Array(pdf.saveToBuffer({ garbage: 'compact' }).asUint8Array());
-    checkRedacted(mupdf, file, byPage);
-    return { file, boxes: [...byPage.values()].reduce((n, a) => n + a.length, 0), pages: byPage.size };
+    checkRedacted(mupdf, file, byPage, removedFields, matches);
+    const boxCount = [...byPage.values()].reduce((n, a) => n + a.length, 0);
+    return { file, boxes: boxCount, pages: byPage.size, bookmarks, attachments, unchecked };
   } finally {
     pdf.destroy();
+  }
+}
+
+/** Whether `text` contains any of the (already normalized) phrases. */
+function mentions(text: string, phrases: Set<string>): boolean {
+  if (phrases.size === 0 || !text) return false;
+  const t = normalize(text);
+  for (const p of phrases) if (t.includes(p)) return true;
+  return false;
+}
+
+/**
+ * The words under the boxes, before they are removed, so bookmarks and
+ * attached files that mention them can be found. Words shorter than three
+ * letters or digits are left out: they would match almost anything.
+ */
+function wordsUnder(page: MuPDF.PDFPage, rects: MuPDF.Rect[]): string[] {
+  const inside = (x: number, y: number) => rects.some((r) => x >= r[0] && x <= r[2] && y >= r[1] && y <= r[3]);
+  const runs: string[] = [];
+  let run = '';
+  const flush = () => {
+    if (run) runs.push(run);
+    run = '';
+  };
+  const stext = page.toStructuredText('');
+  try {
+    stext.walk({
+      onChar(c, _origin, _font, _size, quad) {
+        const [x0, y0, x1, y1] = quadBounds(quad);
+        if (inside((x0 + x1) / 2, (y0 + y1) / 2)) run += c;
+        else flush();
+      },
+      endLine: flush,
+    });
+  } finally {
+    stext.destroy();
+  }
+  flush();
+  const words = new Set<string>();
+  for (const r of runs) addWords(r, words);
+  return [...words];
+}
+
+/** Adds the words of `text` (three letters or digits or longer) to `words`. */
+function addWords(text: string, words: Set<string>) {
+  for (const w of normalize(text).split(' ')) {
+    // Punctuation at either end ("number:") is not part of the word.
+    const word = w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '');
+    if (word.length >= 3 && words.size < MAX_WORDS) words.add(word);
+  }
+}
+
+/**
+ * A form field can be shown in several places (on several pages), each
+ * keeping its own picture of the value. Once its value is redacted, every
+ * place it is shown is removed too.
+ */
+function removeFieldsEverywhere(pdf: MuPDF.PDFDocument, names: Set<string>) {
+  if (names.size === 0) return;
+  for (let i = 0; i < pdf.countPages(); i++) {
+    const page = pdf.loadPage(i);
+    try {
+      for (const widget of page.getWidgets()) {
+        if (!names.has(widget.getName())) continue;
+        const obj = widget.getObject();
+        clearFieldValue(obj);
+        page.deleteAnnotation(widget);
+        detachFromForm(pdf, obj);
+      }
+    } finally {
+      page.destroy();
+    }
+  }
+}
+
+/** A bookmark, the open/closed state it had, and the bookmarks under it. */
+type Bookmark = { obj: MuPDF.PDFObject; open: boolean; kids: Bookmark[] };
+
+/**
+ * Removes the bookmarks whose title mentions the redacted text. The
+ * bookmarks under a removed one move up into its place, so the rest of the
+ * list keeps working. Returns how many were removed.
+ */
+function removeBookmarks(pdf: MuPDF.PDFDocument, matches: (text: string) => boolean): number {
+  const catalog = pdf.getTrailer().get('Root');
+  let root = catalog.get('Outlines');
+  if (!root.isDictionary()) return 0;
+  const seen = new Set<number>();
+  let total = 0;
+  let removed = 0;
+
+  // Reads one level of the list (following /Next), and the levels below it.
+  const read = (first: MuPDF.PDFObject, depth: number): Bookmark[] => {
+    const list: Bookmark[] = [];
+    if (depth > MAX_DEPTH) return list;
+    for (let item = first; item.isDictionary(); item = item.get('Next')) {
+      // Hostile files can loop the list back on itself.
+      if (item.isIndirect()) {
+        if (seen.has(item.asIndirect())) break;
+        seen.add(item.asIndirect());
+      }
+      if (++total > MAX_BOOKMARKS) throw new UserFacingError(`This PDF has more than ${MAX_BOOKMARKS} bookmarks, which is above ILMPDF's limit.`);
+      const title = item.get('Title');
+      const kids = read(item.get('First'), depth + 1);
+      if (title.isString() && matches(title.asString())) {
+        removed++;
+        list.push(...kids);
+      } else {
+        const count = item.get('Count');
+        list.push({ obj: item, open: count.isNumber() && count.asNumber() > 0, kids });
+      }
+    }
+    return list;
+  };
+  const top = read(root.get('First'), 0);
+  if (removed === 0) return 0;
+
+  if (!root.isIndirect()) {
+    root = pdf.addObject(root);
+    catalog.put('Outlines', root);
+  }
+  // How many bookmarks show when this list is shown.
+  const visible = (list: Bookmark[]): number => list.reduce((n, b) => n + 1 + (b.open ? visible(b.kids) : 0), 0);
+  // Links each bookmark to its parent and neighbours again, and refreshes
+  // the counts (negative for a closed bookmark, as the PDF format asks).
+  const link = (parent: MuPDF.PDFObject, list: Bookmark[]) => {
+    list.forEach((b) => {
+      // Bookmarks written inline (not as separate objects) can't be linked to.
+      if (!b.obj.isIndirect()) b.obj = pdf.addObject(b.obj);
+    });
+    if (list.length === 0) {
+      parent.delete('First');
+      parent.delete('Last');
+    } else {
+      parent.put('First', list[0]!.obj);
+      parent.put('Last', list[list.length - 1]!.obj);
+    }
+    list.forEach((b, i) => {
+      b.obj.put('Parent', parent);
+      if (i > 0) b.obj.put('Prev', list[i - 1]!.obj);
+      else b.obj.delete('Prev');
+      if (i < list.length - 1) b.obj.put('Next', list[i + 1]!.obj);
+      else b.obj.delete('Next');
+      link(b.obj, b.kids);
+      if (b.kids.length === 0) b.obj.delete('Count');
+      else b.obj.put('Count', b.open ? visible(b.kids) : -visible(b.kids));
+    });
+  };
+  link(root, top);
+  if (top.length === 0) catalog.delete('Outlines');
+  else root.put('Count', visible(top));
+  return removed;
+}
+
+/** Where an attached file is listed. One file can be listed in several places. */
+type AttachmentPlace =
+  | { kind: 'list'; name: string }
+  | { kind: 'af'; owner: MuPDF.PDFObject; spec: MuPDF.PDFObject }
+  | { kind: 'annot'; page: number; annot: MuPDF.PDFObject };
+type Attachment = { spec: MuPDF.PDFObject; label: string; texts: string[]; places: AttachmentPlace[] };
+
+/**
+ * Removes the attached files that mention the redacted text in their name,
+ * description or contents (or every one, with `all`). Files are found in the
+ * document's list of attached files, in "associated files" entries, and in
+ * paperclip comments on the pages. Files whose contents can't be read as
+ * text or as a PDF are kept and named in `unchecked`.
+ */
+function removeAttachments(
+  mupdf: Mupdf,
+  pdf: MuPDF.PDFDocument,
+  matches: (text: string) => boolean,
+  all: boolean,
+): { removed: number; unchecked: string[] } {
+  const found = new Map<string, Attachment>();
+  let direct = 0;
+  const note = (spec: MuPDF.PDFObject, place: AttachmentPlace, ...texts: string[]) => {
+    if (!spec.isDictionary()) return;
+    const key = spec.isIndirect() ? `obj ${spec.asIndirect()}` : `inline ${direct++}`;
+    let entry = found.get(key);
+    if (!entry) {
+      if (found.size >= MAX_ATTACHMENTS) throw new UserFacingError(`This PDF has more than ${MAX_ATTACHMENTS} attached files, which is above ILMPDF's limit.`);
+      const own = ['UF', 'F', 'Desc'].map((k) => spec.get(k)).filter((v) => v.isString()).map((v) => v.asString());
+      entry = { spec, label: own[0] || texts[0] || 'unnamed file', texts: own, places: [] };
+      found.set(key, entry);
+    }
+    entry.texts.push(...texts.filter(Boolean));
+    entry.places.push(place);
+  };
+
+  const catalog = pdf.getTrailer().get('Root');
+  const list: [string, MuPDF.PDFObject][] = [];
+  readNameTree(catalog.get('Names', 'EmbeddedFiles'), list);
+  for (const [name, spec] of list) note(spec, { kind: 'list', name }, name);
+  const noteAf = (owner: MuPDF.PDFObject) => {
+    const af = deref(owner.get('AF'));
+    if (af.isArray()) for (let i = 0; i < af.length; i++) note(af.get(i), { kind: 'af', owner, spec: af.get(i) });
+    else if (af.isDictionary()) note(owner.get('AF'), { kind: 'af', owner, spec: owner.get('AF') });
+  };
+  noteAf(catalog);
+  const pages = pdf.countPages();
+  for (let i = 0; i < pages; i++) {
+    const pageObj = pdf.findPage(i);
+    noteAf(pageObj);
+    const annots = deref(pageObj.get('Annots'));
+    if (!annots.isArray()) continue;
+    for (let j = 0; j < annots.length; j++) {
+      const annot = annots.get(j);
+      if (!annot.isDictionary() || nameOf(annot.get('Subtype')) !== 'FileAttachment') continue;
+      const contents = annot.get('Contents');
+      note(annot.get('FS'), { kind: 'annot', page: i, annot }, contents.isString() ? contents.asString() : '');
+    }
+  }
+  if (found.size === 0) return { removed: 0, unchecked: [] };
+
+  const doomed: Attachment[] = [];
+  const unchecked: string[] = [];
+  for (const entry of found.values()) {
+    if (all || entry.texts.some(matches)) {
+      doomed.push(entry);
+      continue;
+    }
+    const contents = readAttachment(mupdf, pdf, entry.spec);
+    if (contents === null) unchecked.push(entry.label);
+    else if (matches(contents)) doomed.push(entry);
+  }
+
+  const goneNames = new Set<string>();
+  const goneAnnots: { page: number; annot: MuPDF.PDFObject }[] = [];
+  for (const entry of doomed) {
+    for (const place of entry.places) {
+      if (place.kind === 'list') goneNames.add(place.name);
+      else if (place.kind === 'annot') goneAnnots.push(place);
+      else {
+        const af = deref(place.owner.get('AF'));
+        if (af.isArray()) {
+          for (let i = af.length - 1; i >= 0; i--) if (sameObject(af.get(i), place.spec)) af.delete(i);
+          if (af.length === 0) place.owner.delete('AF');
+        } else {
+          place.owner.delete('AF');
+        }
+      }
+    }
+  }
+  if (goneNames.size > 0) {
+    // The list is written again without the removed files, as one flat list.
+    const kept = list.filter(([name]) => !goneNames.has(name));
+    const names = catalog.get('Names');
+    if (kept.length === 0) {
+      names.delete('EmbeddedFiles');
+      // A "portfolio" is a PDF that is mainly a folder of attached files.
+      catalog.delete('Collection');
+    } else {
+      const tree = pdf.newDictionary();
+      const pairs = pdf.newArray();
+      for (const [name, spec] of kept.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
+        pairs.push(pdf.newString(name));
+        pairs.push(spec);
+      }
+      tree.put('Names', pairs);
+      names.put('EmbeddedFiles', tree);
+    }
+  }
+  for (const { page, annot } of goneAnnots) {
+    const annots = deref(pdf.findPage(page).get('Annots'));
+    if (!annots.isArray()) continue;
+    // Its pop-up note (which points back to it) goes too, or it would keep the file in.
+    const popup = annot.get('Popup');
+    for (let i = annots.length - 1; i >= 0; i--) {
+      const item = annots.get(i);
+      if (sameObject(item, annot) || (!popup.isNull() && sameObject(item, popup)) || (item.isDictionary() && sameObject(item.get('Parent'), annot))) annots.delete(i);
+    }
+  }
+  return { removed: doomed.length, unchecked: unchecked.slice(0, MAX_UNCHECKED_NAMES) };
+}
+
+function sameObject(a: MuPDF.PDFObject, b: MuPDF.PDFObject): boolean {
+  if (a.isIndirect() || b.isIndirect()) return a.isIndirect() && b.isIndirect() && a.asIndirect() === b.asIndirect();
+  // Values written inline: the same one is the same object inside MuPDF.
+  return a.pointer === b.pointer;
+}
+
+/** Collects the [name, value] pairs of a name tree, such as the list of attached files. */
+function readNameTree(node: MuPDF.PDFObject, out: [string, MuPDF.PDFObject][], depth = 0) {
+  const obj = deref(node);
+  if (depth > MAX_DEPTH || !obj.isDictionary()) return;
+  const names = deref(obj.get('Names'));
+  if (names.isArray()) {
+    for (let i = 0; i + 1 < names.length; i += 2) {
+      const key = names.get(i);
+      if (out.length >= MAX_ATTACHMENTS) throw new UserFacingError(`This PDF has more than ${MAX_ATTACHMENTS} attached files, which is above ILMPDF's limit.`);
+      out.push([key.isString() ? key.asString() : '', names.get(i + 1)]);
+    }
+  }
+  const kids = deref(obj.get('Kids'));
+  if (kids.isArray()) for (let i = 0; i < kids.length; i++) readNameTree(kids.get(i), out, depth + 1);
+}
+
+/**
+ * An attached file's contents as text, to look for the redacted text: plain
+ * text files as they are, and attached PDFs by their page text. Gives back
+ * null when the contents can't be read that way (a Word file, an image, a
+ * zip, a locked PDF, or a PDF that holds attached files of its own).
+ */
+function readAttachment(mupdf: Mupdf, pdf: MuPDF.PDFDocument, spec: MuPDF.PDFObject): string | null {
+  let bytes: Uint8Array;
+  try {
+    const buffer = pdf.getEmbeddedFileContents(spec);
+    if (!buffer) return '';
+    bytes = buffer.asUint8Array();
+  } catch {
+    return null;
+  }
+  if (bytes.length === 0) return '';
+  const head = new TextDecoder('latin1').decode(bytes.subarray(0, 1024));
+  if (head.includes('%PDF-')) return attachedPdfText(mupdf, bytes);
+  try {
+    let text: string;
+    if (bytes[0] === 0xff && bytes[1] === 0xfe) text = new TextDecoder('utf-16le', { fatal: true }).decode(bytes);
+    else if (bytes[0] === 0xfe && bytes[1] === 0xff) text = new TextDecoder('utf-16be', { fatal: true }).decode(bytes);
+    else text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    // Control characters other than tabs and line breaks mean it isn't really text.
+    // eslint-disable-next-line no-control-regex
+    return /[\u0000-\u0008\u000e-\u001f]/.test(text) ? null : text;
+  } catch {
+    return null;
+  }
+}
+
+function attachedPdfText(mupdf: Mupdf, bytes: Uint8Array): string | null {
+  let inner: MuPDF.PDFDocument;
+  try {
+    inner = open(mupdf, bytes);
+  } catch {
+    return null;
+  }
+  try {
+    if (inner.needsPassword() || inner.countPages() > MAX_PAGES) return null;
+    const files: [string, MuPDF.PDFObject][] = [];
+    readNameTree(inner.getTrailer().get('Root', 'Names', 'EmbeddedFiles'), files);
+    if (files.length > 0) return null;
+    const parts: string[] = [];
+    for (let i = 0; i < inner.countPages(); i++) {
+      const page = inner.loadPage(i);
+      try {
+        const stext = page.toStructuredText('');
+        parts.push(stext.asText());
+        stext.destroy();
+        for (const widget of page.getWidgets()) parts.push(widget.getValue());
+      } finally {
+        page.destroy();
+      }
+    }
+    return parts.join('\n');
+  } catch {
+    return null;
+  } finally {
+    inner.destroy();
   }
 }
 
@@ -834,11 +1250,15 @@ function overlaps(a: MuPDF.Rect, b: MuPDF.Rect): boolean {
  * Form fields are emptied before they are removed, because a field's value
  * can also be stored away from the page, in the form's list of fields.
  */
-function removeOverlapping(pdf: MuPDF.PDFDocument, page: MuPDF.PDFPage, rects: MuPDF.Rect[]) {
+function removeOverlapping(pdf: MuPDF.PDFDocument, page: MuPDF.PDFPage, rects: MuPDF.Rect[], removedFields: Set<string>): string[] {
   const hit = (r: MuPDF.Rect) => rects.some((rect) => overlaps(r, rect));
+  const values: string[] = [];
   for (const link of page.getLinks()) if (hit(link.getBounds())) page.deleteLink(link);
   for (const widget of page.getWidgets()) {
     if (!hit(widget.getBounds())) continue;
+    removedFields.add(widget.getName());
+    const kind = kindOf(widget);
+    if (kind === 'text' || kind === 'choice') values.push(widget.getValue());
     const obj = widget.getObject();
     clearFieldValue(obj);
     page.deleteAnnotation(widget);
@@ -847,6 +1267,7 @@ function removeOverlapping(pdf: MuPDF.PDFDocument, page: MuPDF.PDFPage, rects: M
   for (const annot of page.getAnnotations()) {
     if (annot.getType() !== 'Redact' && hit(annot.getBounds())) page.deleteAnnotation(annot);
   }
+  return values;
 }
 
 /** Deletes the stored value of a form field, up through its parent fields. */
@@ -886,8 +1307,18 @@ function removeMetadata(pdf: MuPDF.PDFDocument) {
   }
 }
 
-/** Re-opens the result and makes sure no text or form field is left under any box. */
-function checkRedacted(mupdf: Mupdf, file: Uint8Array, byPage: Map<number, RedactBox[]>) {
+/**
+ * Re-opens the result and makes sure no text or form field is left under any
+ * box, no removed form field is shown anywhere, and no bookmark or attached
+ * file still mentions the redacted text by name.
+ */
+function checkRedacted(
+  mupdf: Mupdf,
+  file: Uint8Array,
+  byPage: Map<number, RedactBox[]>,
+  removedFields: Set<string>,
+  matches: (text: string) => boolean,
+) {
   const unsafe = () => new UserFacingError('Some content under the marked areas could not be removed, so nothing was saved.');
   const pdf = open(mupdf, file);
   try {
@@ -915,9 +1346,42 @@ function checkRedacted(mupdf: Mupdf, file: Uint8Array, byPage: Map<number, Redac
         page.destroy();
       }
     }
+    const left = () => new UserFacingError('A bookmark, attached file or form field with the redacted text could not be removed, so nothing was saved.');
+    const pages = pdf.countPages();
+    for (let i = 0; i < pages; i++) {
+      const page = pdf.loadPage(i);
+      try {
+        if (removedFields.size > 0 && page.getWidgets().some((w) => removedFields.has(w.getName()))) throw left();
+        for (const annot of page.getAnnotations()) {
+          if (annot.getType() === 'FileAttachment' && (matches(annot.getContents()) || specMentions(annot.getObject().get('FS'), matches))) throw left();
+        }
+      } finally {
+        page.destroy();
+      }
+    }
+    const walk = (items: ReturnType<MuPDF.PDFDocument['loadOutline']> | undefined, depth = 0) => {
+      if (!items || depth > MAX_DEPTH) return;
+      for (const item of items) {
+        if (matches(item.title ?? '')) throw left();
+        walk(item.down, depth + 1);
+      }
+    };
+    walk(pdf.loadOutline());
+    const files: [string, MuPDF.PDFObject][] = [];
+    readNameTree(pdf.getTrailer().get('Root', 'Names', 'EmbeddedFiles'), files);
+    if (files.some(([name, spec]) => matches(name) || specMentions(spec, matches))) throw left();
   } finally {
     pdf.destroy();
   }
+}
+
+/** Whether an attached file's name or description mentions the redacted text. */
+function specMentions(spec: MuPDF.PDFObject, matches: (text: string) => boolean): boolean {
+  if (!spec.isDictionary()) return false;
+  return ['UF', 'F', 'Desc'].some((k) => {
+    const v = spec.get(k);
+    return v.isString() && matches(v.asString());
+  });
 }
 
 /**

@@ -54,11 +54,18 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { text: ops.extractText(mupdf, job.file) };
     case 'annotate':
       return { files: [ops.annotate(mupdf, job.file, job.items)] };
-    case 'findText':
-      return { boxes: ops.findText(mupdf, job.file, job.text) };
+    case 'findText': {
+      const { boxes, fields } = ops.findText(mupdf, job.file, job.text);
+      return { boxes, count: fields };
+    }
     case 'redact': {
-      const { file, boxes, pages } = ops.redact(mupdf, job.file, job.boxes, job.stripMetadata);
-      return { files: [file], count: boxes, meta: { pages: String(pages) } };
+      const { file, boxes, pages, bookmarks, attachments, unchecked } = ops.redact(mupdf, job.file, job.boxes, job.options);
+      return {
+        files: [file],
+        count: boxes,
+        meta: { pages: String(pages), bookmarks: String(bookmarks), attachments: String(attachments) },
+        unchecked,
+      };
     }
     case 'sanitize': {
       const { file, report } = ops.sanitize(mupdf, job.file);

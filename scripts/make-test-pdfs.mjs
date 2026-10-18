@@ -315,7 +315,7 @@ async function scannedPdf() {
 
 // A made-up letter full of "private" details to practise redaction on: the
 // same account number on both pages (the second page is rotated), a photo,
-// a drawn shape, a link and a filled-in form field.
+// a drawn shape, a link, a filled-in form field, bookmarks and attached files.
 async function redactionPdf() {
   const doc = await newDoc('Redaction sample');
   const font = await doc.embedFont(StandardFonts.Helvetica);
@@ -345,6 +345,27 @@ async function redactionPdf() {
   line(second, 'Account number again: 0000 1111 2222 3333', 730);
   line(second, 'Public text on page two.', 700);
   second.setRotation(degrees(90));
+
+  // Bookmarks: "Letter" > "About Jane Example" > "Contact details", and
+  // "Page two". Redacting "Jane Example" should remove only the middle one.
+  const ctx = doc.context;
+  const ref = () => ctx.nextRef();
+  const [outlines, letter, about, contact, two] = [ref(), ref(), ref(), ref(), ref()];
+  const dest = (page) => ctx.obj([page.ref, PDFName.of('Fit')]);
+  ctx.assign(outlines, ctx.obj({ Type: 'Outlines', First: letter, Last: two, Count: 4 }));
+  ctx.assign(letter, ctx.obj({ Title: PDFString.of('Letter'), Parent: outlines, Next: two, First: about, Last: about, Count: 2, Dest: dest(first) }));
+  ctx.assign(about, ctx.obj({ Title: PDFString.of('About Jane Example'), Parent: letter, First: contact, Last: contact, Count: 1, Dest: dest(first) }));
+  ctx.assign(contact, ctx.obj({ Title: PDFString.of('Contact details'), Parent: about, Dest: dest(first) }));
+  ctx.assign(two, ctx.obj({ Title: PDFString.of('Page two'), Parent: outlines, Prev: letter, Dest: dest(second) }));
+  doc.catalog.set(PDFName.of('Outlines'), outlines);
+
+  // Attached files: one mentions the account number, one is harmless, and
+  // one is a picture whose contents can't be searched.
+  const attach = (bytes, name, mimeType, description) =>
+    doc.attach(bytes, name, { mimeType, description, creationDate: FIXED_DATE, modificationDate: FIXED_DATE });
+  await attach(new TextEncoder().encode('Account 0000 1111 2222 3333 belongs to the sample letter.\n'), 'account-details.txt', 'text/plain', 'Made-up account details');
+  await attach(new TextEncoder().encode('Nothing private here.\n'), 'public-notes.txt', 'text/plain', 'Made-up public notes');
+  await attach(png(8, 8, () => [200, 200, 200]), 'scan.png', 'image/png', 'Made-up picture');
   return doc.save();
 }
 
@@ -404,7 +425,7 @@ export async function buildTestFiles() {
     { name: '17-scanned-heavy.pdf', purpose: 'Three big scanned-style pages: Compress should make it much smaller.', bytes: await scannedPdf() },
     {
       name: '19-redaction-sample.pdf',
-      purpose: 'Made-up name, account number (on both pages), photo, shape, link and form field: practise redaction.',
+      purpose: 'Made-up name, account number (on both pages), photo, shape, link, form field, bookmarks and three attached files: practise redaction.',
       bytes: await redactionPdf(),
     },
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },

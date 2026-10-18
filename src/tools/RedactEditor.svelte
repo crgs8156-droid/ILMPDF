@@ -16,8 +16,9 @@
   const initial = untrack(() => file);
 
   // Every marked area on every page, as fractions of the page as shown.
-  // `id` only tells boxes apart in the list; it never reaches the worker.
-  type Marked = RedactBox & { id: number };
+  // `id` only tells boxes apart in the list, and `term` is the search that
+  // found the box, if any; neither is sent to the worker as part of a box.
+  type Marked = RedactBox & { id: number; term?: string };
   let boxes = $state<Marked[]>([]);
   let nextId = 0;
   const onPage = $derived(boxes.filter((b) => b.page === pageIndex));
@@ -35,6 +36,9 @@
 
   let search = $state('');
   let stripMetadata = $state(true);
+  let removeAllAttachments = $state(false);
+  // Attached files the last redaction kept because it couldn't read them.
+  let unchecked = $state<string[]>([]);
   const finder = new ToolRun();
   const job = new ToolRun();
 
@@ -104,21 +108,33 @@
       const out = await runMupdfJob({ op: 'findText', file: copyBytes(initial.bytes), text });
       const found = out.boxes ?? [];
       if (found.length === 0) return `"${text.trim()}" was not found. Scanned pages (pictures of text) can't be searched.`;
-      boxes = [...boxes, ...found.map((b) => ({ ...b, id: nextId++ }))];
+      const term = text.trim();
+      boxes = [...boxes, ...found.map((b) => ({ ...b, id: nextId++, term }))];
       const pages = new Set(found.map((b) => b.page)).size;
+      const fields = out.count ?? 0;
       pageIndex = found[0]!.page;
-      return `Marked ${plural(found.length, 'match', 'matches')} on ${plural(pages, 'page')}. Check each one before redacting.`;
+      const inFields = fields > 0 ? ` (${fields} in form ${fields === 1 ? 'field' : 'fields'})` : '';
+      return `Marked ${plural(found.length, 'match', 'matches')}${inFields} on ${plural(pages, 'page')}. Check each one before redacting.`;
     });
   }
 
   function apply() {
     const chosen = boxes.map(({ page, x, y, width, height }) => ({ page, x, y, width, height }));
-    const strip = stripMetadata;
+    // Only searches that still have a marked match count as redacted text.
+    const phrases = [...new Set(boxes.flatMap((b) => (b.term ? [b.term] : [])))];
+    const options = { stripMetadata, removeAllAttachments, phrases };
+    unchecked = [];
     job.run(async () => {
-      const out = await runMupdfJob({ op: 'redact', file: copyBytes(initial.bytes), boxes: chosen, stripMetadata: strip });
+      const out = await runMupdfJob({ op: 'redact', file: copyBytes(initial.bytes), boxes: chosen, options });
       saveBytes(out.files![0]!, safeFileName(initial.name, '-redacted'));
-      const pages = Number(out.meta?.['pages'] ?? 0);
-      return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(pages, 'page')} and saved a new copy. Open it and check it before you share it.`;
+      const count = (key: string) => Number(out.meta?.[key] ?? 0);
+      const extras = [
+        count('bookmarks') > 0 ? plural(count('bookmarks'), 'bookmark') : '',
+        count('attachments') > 0 ? plural(count('attachments'), 'attached file') : '',
+      ].filter(Boolean);
+      const alsoRemoved = extras.length > 0 ? ` Also removed ${extras.join(' and ')} that mentioned the redacted text.` : '';
+      unchecked = (out.unchecked ?? []).map((name) => `Kept "${name}": this attached file can't be checked for the redacted text.`);
+      return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(count('pages'), 'page')} and saved a new copy.${alsoRemoved} Open it and check it before you share it.`;
     });
   }
 </script>
@@ -197,10 +213,15 @@
     <input type="checkbox" bind:checked={stripMetadata} data-testid="strip-metadata" />
     Also remove hidden details (title, author, and tagging that can hold copies of the text)
   </label>
+  <label class="check">
+    <input type="checkbox" bind:checked={removeAllAttachments} data-testid="remove-all-attachments" />
+    Also remove every attached file, not just the ones that mention the redacted text
+  </label>
   <p class="muted">
-    Links, comments and form fields that touch a marked area are removed too. "Mark all" searches the page text only,
-    not filled-in form fields: draw a box over a field to remove it. Bookmarks and attached files are not changed, so
-    check them if they might mention what you redact.
+    Links, comments and form fields that touch a marked area are removed too. "Mark all" also searches filled-in form
+    fields. Bookmarks and attached files that mention the redacted text (your searches and the words under your marks)
+    are removed. Attached files that can't be read as text, such as Word files or pictures, are kept and named after
+    redacting.
   </p>
   <div class="actions">
     <button type="button" disabled={job.busy || boxes.length === 0} onclick={apply} data-testid="run">
@@ -213,6 +234,7 @@
 </div>
 <Notice messages={job.errors} />
 <Notice kind="ok" messages={job.done} />
+<Notice kind="info" messages={unchecked} />
 
 <style>
   .find {

@@ -96,3 +96,37 @@ test('redact: says so when the text is not found', async ({ page }) => {
   await expect(page.getByText('"nowhere" was not found.', { exact: false })).toBeVisible();
   await expect(page.getByTestId('run')).toBeDisabled();
 });
+
+/** A 400 x 300 page with a secret line, a field holding the secret, and two attached files. */
+async function extrasPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage([400, 300]);
+  page.drawText('SECRET-WORD', { x: 40, y: 250, size: 20, font });
+  page.drawText('public line', { x: 40, y: 40, size: 20, font });
+  const field = doc.getForm().createTextField('notes');
+  field.setText('Holds SECRET-WORD too');
+  field.addToPage(page, { x: 40, y: 140, width: 250, height: 30 });
+  await doc.attach(new TextEncoder().encode('SECRET-WORD in a file'), 'secret.txt', { mimeType: 'text/plain' });
+  // Bytes that aren't text, so the contents can't be checked.
+  await doc.attach(Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]), 'picture.png', { mimeType: 'image/png' });
+  return doc.save();
+}
+
+test('redact: "Mark all" finds form fields, and matching attached files are removed', async ({ page }) => {
+  test.slow();
+  await openTool(page, 'redact');
+  await addPdf(page, 'extras.pdf', await extrasPdf());
+  await page.getByTestId('find-text').fill('secret-word');
+  await page.getByTestId('find').click();
+  await expect(page.getByText('Marked 2 matches (1 in form field) on 1 page.', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('mark')).toHaveCount(2);
+
+  const [saved] = await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+  await expect(page.getByText('Also removed 1 attached file that mentioned the redacted text.', { exact: false })).toBeVisible();
+  await expect(page.getByTestId('notice-info')).toContainText('Kept "picture.png"');
+  const pdf = mupdf.Document.openDocument(await bytesOf(saved!), 'application/pdf').asPDF()!;
+  expect(Object.keys(pdf.getEmbeddedFiles())).toEqual(['picture.png']);
+  expect((pdf.loadPage(0) as mupdf.PDFPage).getWidgets()).toHaveLength(0);
+  pdf.destroy();
+});
