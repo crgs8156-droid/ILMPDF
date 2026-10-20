@@ -136,8 +136,10 @@
       const extras = [
         count('bookmarks') > 0 ? plural(count('bookmarks'), 'bookmark') : '',
         count('attachments') > 0 ? plural(count('attachments'), 'attached file') : '',
+        count('comments') > 0 ? plural(count('comments'), 'comment') : '',
       ].filter(Boolean);
-      const alsoRemoved = extras.length > 0 ? ` Also removed ${extras.join(' and ')} that mentioned the redacted text.` : '';
+      const list = extras.length > 1 ? `${extras.slice(0, -1).join(', ')} and ${extras.at(-1)}` : extras[0];
+      const alsoRemoved = extras.length > 0 ? ` Also removed ${list} that mentioned the redacted text.` : '';
       // Removing scripts also removes every attached file, so none is left to warn about.
       if (!clean) unchecked = (out.unchecked ?? []).map((name) => `Kept "${name}": this attached file can't be checked for the redacted text.`);
       return `Redacted ${plural(out.count ?? 0, 'area')} on ${plural(count('pages'), 'page')} and saved a new copy.${alsoRemoved}${note} Open it and check it before you share it.`;
