@@ -700,11 +700,19 @@ export type RedactBox = { page: number; x: number; y: number; width: number; hei
  */
 export type RedactOptions = { stripMetadata?: boolean; phrases?: string[]; removeAllAttachments?: boolean };
 /**
- * bookmarks and attachments: how many were removed. unchecked: the names of
+ * bookmarks, attachments and comments: how many were removed. unchecked: the names of
  * attached files that were kept because their contents could not be read to
  * look for the redacted text (untrusted text from the PDF).
  */
-export type RedactResult = { file: Uint8Array; boxes: number; pages: number; bookmarks: number; attachments: number; unchecked: string[] };
+export type RedactResult = {
+  file: Uint8Array;
+  boxes: number;
+  pages: number;
+  bookmarks: number;
+  attachments: number;
+  comments: number;
+  unchecked: string[];
+};
 /** fields: how many of the boxes are filled-in form fields. */
 export type FindResult = { boxes: RedactBox[]; fields: number };
 
@@ -715,6 +723,7 @@ const MAX_WORDS = 5_000;
 const MAX_BOOKMARKS = 10_000;
 const MAX_ATTACHMENTS = 1_000;
 const MAX_UNCHECKED_NAMES = 20;
+const MAX_LABEL = 200;
 
 /**
  * Finds every place a word or phrase appears (ignoring upper/lower case and
@@ -777,14 +786,16 @@ function normalize(text: string): string {
  * are deleted from the file (not just covered), then a black box is drawn in
  * their place. Links, comments and form fields that overlap a box are removed
  * too; a removed form field goes everywhere it is shown, not just under the
- * box. Bookmarks and attached files that mention the redacted text (see
- * RedactOptions) are removed as well. With `stripMetadata`, the document's
+ * box. Bookmarks, attached files and comments anywhere in the file that
+ * mention the redacted text (see RedactOptions) are removed as well, and so
+ * is the small picture of each redacted page that some PDFs store (a
+ * thumbnail, which would still show the redacted text). With `stripMetadata`, the document's
  * title, author and similar details, and its accessibility tagging (which can
  * hold copies of the page text), are removed too.
  *
  * Afterwards the saved file is opened again and checked: if any text is
- * still found under a box, or a removed field, bookmark or attached file is
- * still there, the job fails rather than hand back an unsafe file.
+ * still found under a box, or a removed field, bookmark, attached file,
+ * comment or thumbnail is still there, the job fails rather than hand back an unsafe file.
  */
 export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], options: RedactOptions = {}): RedactResult {
   const pdf = openForRedaction(mupdf, bytes);
@@ -818,6 +829,8 @@ export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], opti
           mupdf.PDFPage.REDACT_LINE_ART_REMOVE_IF_COVERED,
           mupdf.PDFPage.REDACT_TEXT_REMOVE,
         );
+        // Viewers draw their own thumbnails, so nothing visible is lost.
+        pdf.findPage(index).delete('Thumb');
       } finally {
         page.destroy();
       }
@@ -825,6 +838,7 @@ export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], opti
     removeFieldsEverywhere(pdf, removedFields);
     const matches = (text: string) => mentions(text, phrases);
     const bookmarks = removeBookmarks(pdf, matches);
+    const comments = removeComments(pdf, matches);
     const { removed: attachments, unchecked } = removeAttachments(mupdf, pdf, matches, options.removeAllAttachments === true);
     if (options.stripMetadata) removeMetadata(pdf);
     // A full rewrite (never an incremental save), and "garbage" drops every
@@ -832,7 +846,7 @@ export function redact(mupdf: Mupdf, bytes: Uint8Array, boxes: RedactBox[], opti
     const file = new Uint8Array(pdf.saveToBuffer({ garbage: 'compact' }).asUint8Array());
     checkRedacted(mupdf, file, byPage, removedFields, matches);
     const boxCount = [...byPage.values()].reduce((n, a) => n + a.length, 0);
-    return { file, boxes: boxCount, pages: byPage.size, bookmarks, attachments, unchecked };
+    return { file, boxes: boxCount, pages: byPage.size, bookmarks, attachments, comments, unchecked };
   } finally {
     pdf.destroy();
   }
@@ -908,6 +922,42 @@ function removeFieldsEverywhere(pdf: MuPDF.PDFDocument, names: Set<string>) {
       page.destroy();
     }
   }
+}
+
+/**
+ * The text a comment carries: its words, the same words with formatting
+ * ("rich text"), its subject and the author's name.
+ */
+function commentTexts(obj: MuPDF.PDFObject): string[] {
+  return ['Contents', 'RC', 'Subj', 'T'].map((k) => obj.get(k)).filter((v) => v.isString()).map((v) => v.asString());
+}
+
+// Form fields, links and redaction marks are handled elsewhere; attached
+// files have their own rules (removeAttachments).
+const NOT_COMMENTS = new Set(['Widget', 'Link', 'Redact', 'FileAttachment', 'Popup']);
+
+/**
+ * Removes the comments (sticky notes, text boxes, highlights...) anywhere in
+ * the file whose text mentions the redacted text, not only the ones under a
+ * box. Their pop-up notes go with them. Returns how many were removed.
+ */
+function removeComments(pdf: MuPDF.PDFDocument, matches: (text: string) => boolean): number {
+  let removed = 0;
+  for (let i = 0; i < pdf.countPages(); i++) {
+    const page = pdf.loadPage(i);
+    try {
+      for (const annot of page.getAnnotations()) {
+        if (NOT_COMMENTS.has(annot.getType())) continue;
+        if (commentTexts(annot.getObject()).some(matches)) {
+          page.deleteAnnotation(annot);
+          removed++;
+        }
+      }
+    } finally {
+      page.destroy();
+    }
+  }
+  return removed;
 }
 
 /** A bookmark, the open/closed state it had, and the bookmarks under it. */
@@ -1018,7 +1068,9 @@ function removeAttachments(
     if (!entry) {
       if (found.size >= MAX_ATTACHMENTS) throw new UserFacingError(`This PDF has more than ${MAX_ATTACHMENTS} attached files, which is above ILMPDF's limit.`);
       const own = ['UF', 'F', 'Desc'].map((k) => spec.get(k)).filter((v) => v.isString()).map((v) => v.asString());
-      entry = { spec, label: own[0] || texts[0] || 'unnamed file', texts: own, places: [] };
+      // The label is shown to the user, so hidden characters are taken out.
+      const label = cleanText(own[0] || texts[0] || '').trim().slice(0, MAX_LABEL) || 'unnamed file';
+      entry = { spec, label, texts: own, places: [] };
       found.set(key, entry);
     }
     entry.texts.push(...texts.filter(Boolean));
@@ -1366,11 +1418,12 @@ function checkRedacted(
           stext.destroy();
         }
         if (leftover || page.getWidgets().some((w) => rects.some((r) => overlaps(w.getBounds(), r)))) throw unsafe();
+        if (!pdf.findPage(index).get('Thumb').isNull()) throw unsafe();
       } finally {
         page.destroy();
       }
     }
-    const left = () => new UserFacingError('A bookmark, attached file or form field with the redacted text could not be removed, so nothing was saved.');
+    const left = () => new UserFacingError('A bookmark, attached file, comment or form field with the redacted text could not be removed, so nothing was saved.');
     const pages = pdf.countPages();
     for (let i = 0; i < pages; i++) {
       const page = pdf.loadPage(i);
@@ -1378,6 +1431,7 @@ function checkRedacted(
         if (removedFields.size > 0 && page.getWidgets().some((w) => removedFields.has(w.getName()))) throw left();
         for (const annot of page.getAnnotations()) {
           if (annot.getType() === 'FileAttachment' && (matches(annot.getContents()) || specMentions(annot.getObject().get('FS'), matches))) throw left();
+          if (!NOT_COMMENTS.has(annot.getType()) && commentTexts(annot.getObject()).some(matches)) throw left();
         }
       } finally {
         page.destroy();
