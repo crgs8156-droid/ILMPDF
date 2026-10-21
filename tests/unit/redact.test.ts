@@ -244,6 +244,48 @@ describe('redact', async () => {
     expect(holds(out.file, 'SECRET-WORD again')).toBe(false);
   });
 
+  it('removes comments anywhere that mention the redacted text, keeping the others', async () => {
+    const pdf = mupdf.Document.openDocument(await samplePdf(), 'application/pdf').asPDF()!;
+    const page = pdf.loadPage(0) as mupdf.PDFPage;
+    // Bottom right, far from the secret line at the top.
+    for (const [text, y] of [['Reminder: SECRET-WORD is private', 200], ['Nothing to hide', 240]] as const) {
+      const note = page.createAnnotation('Text');
+      note.setRect([360, y, 380, y + 20]);
+      note.setContents(text);
+      note.update();
+    }
+    const box = page.createAnnotation('FreeText');
+    box.setRect([200, 150, 380, 180]);
+    box.setContents('see secret-word above');
+    box.update();
+    const bytes = new Uint8Array(pdf.saveToBuffer({}).asUint8Array());
+    const { file, comments } = redact(mupdf, bytes, findText(mupdf, bytes, 'SECRET-WORD').boxes, { phrases: ['SECRET-WORD'] });
+    expect(comments).toBe(2);
+    expect(holds(file, 'is private')).toBe(false);
+    expect(holds(file, 'see secret-word above')).toBe(false);
+    expect(holds(file, 'Nothing to hide')).toBe(true);
+  });
+
+  it('removes the stored thumbnail of a redacted page', async () => {
+    const doc = await PDFDocument.load(await samplePdf());
+    // A 1 x 1 grey "picture of the page", as older Acrobat versions stored.
+    const thumb = doc.context.stream(new Uint8Array([128]), { Width: 1, Height: 1, ColorSpace: 'DeviceGray', BitsPerComponent: 8 });
+    doc.getPage(0).node.set(PDFName.of('Thumb'), doc.context.register(thumb));
+    const bytes = await doc.save();
+    const { file } = redact(mupdf, bytes, findText(mupdf, bytes, 'SECRET-WORD').boxes);
+    const after = mupdf.Document.openDocument(file, 'application/pdf').asPDF()!;
+    expect(after.findPage(0).get('Thumb').isNull()).toBe(true);
+  });
+
+  it('takes hidden characters out of the names of attached files it cannot check', async () => {
+    const doc = await PDFDocument.load(await samplePdf());
+    // U+202E flips the text after it, so "gnp.exe" would show as "exe.png".
+    await doc.attach(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0, 1, 2]), 'photo\u202Egnp.exe', { mimeType: 'image/png' });
+    const bytes = await doc.save();
+    const { unchecked } = redact(mupdf, bytes, findText(mupdf, bytes, 'SECRET-WORD').boxes);
+    expect(unchecked).toEqual(['photognp.exe']);
+  });
+
   it('copes with a bookmark list that loops back on itself', async () => {
     const doc = await PDFDocument.load(sample);
     const outlines = doc.catalog.lookup(PDFName.of('Outlines'), PDFDict);

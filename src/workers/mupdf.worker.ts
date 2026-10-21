@@ -38,11 +38,11 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { boxes, count: fields };
     }
     case 'redact': {
-      const { file, boxes, pages, bookmarks, attachments, unchecked } = ops.redact(mupdf, job.file, job.boxes, job.options);
+      const { file, boxes, pages, bookmarks, attachments, comments, unchecked } = ops.redact(mupdf, job.file, job.boxes, job.options);
       return {
         files: [file],
         count: boxes,
-        meta: { pages: String(pages), bookmarks: String(bookmarks), attachments: String(attachments) },
+        meta: { pages: String(pages), bookmarks: String(bookmarks), attachments: String(attachments), comments: String(comments) },
         unchecked,
       };
     }
