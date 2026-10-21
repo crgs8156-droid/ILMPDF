@@ -3,6 +3,7 @@
 // transferred (moved, not cloned) into the worker.
 import type { CropBox, ImageInput, NumberPosition, PagePlan, PageSize, SignaturePlacement } from '../engines/pdflib-ops';
 import type { CompressLevel, FormField, FormValues, NewAnnotation, PdfInfo, ProtectOptions, RedactBox, RedactOptions, SanitizeReport, TextResult } from '../engines/mupdf-ops';
+import type { FlattenOptions } from '../engines/mupdf-flatten';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -37,7 +38,8 @@ export type MupdfJob =
   | { op: 'annotate'; file: Uint8Array; items: NewAnnotation[] }
   | { op: 'findText'; file: Uint8Array; text: string }
   | { op: 'redact'; file: Uint8Array; boxes: RedactBox[]; options: RedactOptions }
-  | { op: 'sanitize'; file: Uint8Array };
+  | { op: 'sanitize'; file: Uint8Array }
+  | { op: 'flatten'; file: Uint8Array; opts: FlattenOptions };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
