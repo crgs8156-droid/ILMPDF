@@ -3,6 +3,7 @@
 // created for every job and terminated when it finishes.
 import type { JobOutput, JobRequest, JobResult, PdfJob } from '../core/jobs';
 import * as ops from '../engines/pdflib-ops';
+import { addHeaderFooter } from '../engines/header-footer';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -30,6 +31,8 @@ async function run(job: PdfJob): Promise<JobOutput> {
       return { files: [await ops.addSignature(job.file, job.image, job.placements)] };
     case 'crop':
       return { files: [await ops.cropPages(job.file, job.box, job.pages)] };
+    case 'headerFooter':
+      return { files: [await addHeaderFooter(job.file, job.opts)] };
   }
 }
 
