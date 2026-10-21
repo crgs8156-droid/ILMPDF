@@ -405,6 +405,78 @@ async function redactionPdf() {
   return doc.save();
 }
 
+// ---- Pictures inside PDFs, for Extract images ----
+
+// A JPEG made with MuPDF from a pixel function; `space` is DeviceRGB,
+// DeviceGray or DeviceCMYK.
+function jpeg(space, width, height, pixel) {
+  const pix = new mupdf.Pixmap(mupdf.ColorSpace[space], [0, 0, width, height], false);
+  const data = pix.getPixels();
+  const n = pix.getNumberOfComponents();
+  for (let y = 0, o = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const px = pixel(x, y);
+      for (let c = 0; c < n; c++) data[o++] = px[c] ?? 0;
+    }
+  }
+  // CMYK JPEGs are stored inverted (the Adobe way), which is what pdf-lib
+  // expects when it embeds them.
+  const bytes = new Uint8Array(pix.asJPEG(85, space === 'DeviceCMYK'));
+  pix.destroy();
+  return bytes;
+}
+
+// Three pages with one of each kind of picture Extract images handles:
+// page 1: a colour JPEG photo, a transparent PNG and a tiny 16 x 16 icon;
+// page 2: a grayscale JPEG and the same photo again (saved only once);
+// page 3: a CMYK JPEG, and a picture inside a placed page (nested).
+async function imagesPdf() {
+  const doc = await newDoc('Images inside');
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  const label = (page, text) => page.drawText(text, { x: 40, y: 790, size: 18, font });
+  const photo = await doc.embedJpg(jpeg('DeviceRGB', 400, 300, gradient(400, 300)));
+  const circle = await doc.embedPng(png(300, 300, transparentCircle(300), { alpha: true }));
+  const icon = await doc.embedPng(png(16, 16, () => [30, 160, 90]));
+  const gray = await doc.embedJpg(jpeg('DeviceGray', 320, 240, (x, y) => [Math.round((255 * (x + y)) / 560)]));
+  const cmyk = await doc.embedJpg(jpeg('DeviceCMYK', 300, 200, (x) => [Math.round((255 * x) / 300), 40, 200, 0]));
+
+  const one = doc.addPage(A4);
+  label(one, 'Page 1: photo, transparent picture, tiny icon');
+  one.drawImage(photo, { x: 40, y: 450, width: 300, height: 225 });
+  one.drawImage(circle, { x: 360, y: 450, width: 180, height: 180 });
+  one.drawImage(icon, { x: 40, y: 400, width: 16, height: 16 });
+
+  const two = doc.addPage(A4);
+  label(two, 'Page 2: grayscale picture, the photo again');
+  two.drawImage(gray, { x: 40, y: 450, width: 240, height: 180 });
+  two.drawImage(photo, { x: 300, y: 450, width: 200, height: 150 });
+
+  // A small one-page PDF with its own picture, placed on page 3 as a whole.
+  const inner = await newDoc('Placed page');
+  const striped = await inner.embedPng(png(200, 200, stripes));
+  inner.addPage([220, 220]).drawImage(striped, { x: 10, y: 10, width: 200, height: 200 });
+  const [placed] = await doc.embedPdf(await inner.save());
+
+  const three = doc.addPage(A4);
+  label(three, 'Page 3: CMYK picture, picture inside a placed page');
+  three.drawImage(cmyk, { x: 40, y: 450, width: 240, height: 160 });
+  three.drawPage(placed, { x: 320, y: 420 });
+  return doc.save();
+}
+
+// Text and drawn shapes only: Extract images should say there are none.
+async function noImagesPdf() {
+  const doc = await newDoc('No images');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  for (let i = 0; i < 2; i++) {
+    const page = doc.addPage(A4);
+    page.drawText(`Page ${i + 1}: text and shapes, but no pictures.`, { x: 40, y: 780, size: 16, font });
+    page.drawRectangle({ x: 40, y: 500, width: 200, height: 120, color: COLORS[i] });
+    page.drawCircle({ x: 400, y: 560, size: 60, color: COLORS[i + 2] });
+  }
+  return doc.save();
+}
+
 // ---- The full set ----
 
 export async function buildTestFiles() {
@@ -467,6 +539,8 @@ export async function buildTestFiles() {
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
+    { name: '29-images-mixed.pdf', purpose: 'Three pages with a JPEG photo (used twice), a transparent picture, a tiny icon, a grayscale and a CMYK picture, and a picture inside a placed page: Extract images should save 5 (skipping the icon and the repeat).', bytes: await imagesPdf() },
+    { name: '30-no-images.pdf', purpose: 'Two pages of text and shapes with no pictures: Extract images should say none were found.', bytes: await noImagesPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
