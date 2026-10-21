@@ -288,6 +288,15 @@ async function scriptedFormPdf() {
   return doc.save({ updateFieldAppearances: false });
 }
 
+// A short document with metadata, so a batch has something to remove.
+async function batchLetterPdf() {
+  const doc = await pagesPdf('Batch letter', [LETTER, LETTER]);
+  const pdf = await PDFDocument.load(doc, { updateMetadata: false });
+  pdf.setAuthor('Batch Example');
+  pdf.setTitle('Batch letter');
+  return pdf.save();
+}
+
 // Points the cross-reference table at the wrong place, so a normal reader
 // fails but a repair tool can rebuild it.
 async function repairablePdf() {
@@ -467,6 +476,8 @@ export async function buildTestFiles() {
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
+    { name: '25-batch-letter.pdf', purpose: 'Two Letter pages with author "Batch Example": use with 02, 08 and 17 in Batch process (for example Remove metadata or Compress).', bytes: await batchLetterPdf() },
+    { name: '26-batch-broken-inside.pdf', purpose: 'Starts like a PDF but the rest is junk: in Batch process it should be listed as failed while the other files are still saved.', bytes: new TextEncoder().encode('%PDF-1.7\n%\xe2\xe3\xcf\xd3\nThis is not a PDF body, just junk text.\n'.repeat(4)) },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
