@@ -34,7 +34,7 @@ export async function load(bytes: Uint8Array): Promise<PDFDocument> {
   return doc;
 }
 
-async function save(doc: PDFDocument): Promise<Uint8Array> {
+export async function save(doc: PDFDocument): Promise<Uint8Array> {
   return doc.save({ useObjectStreams: true });
 }
 
@@ -275,7 +275,7 @@ export async function addSignature(bytes: Uint8Array, image: ImageInput, placeme
  * v down, in PDF units from the top-left corner) into page coordinates, which
  * do not rotate with the page and start at the bottom-left.
  */
-function shownView(page: PDFPage) {
+export function shownView(page: PDFPage) {
   const { x: bx, y: by, width: pw, height: ph } = page.getCropBox();
   const turn = (((page.getRotation().angle % 360) + 360) % 360) as 0 | 90 | 180 | 270;
   const sideways = turn === 90 || turn === 270;

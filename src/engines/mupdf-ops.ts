@@ -50,7 +50,7 @@ export function inspect(mupdf: Mupdf, bytes: Uint8Array): PdfInfo {
 }
 
 /** Refuses PDFs above the page limit, with the same message in every tool. */
-function checkPageLimit(pages: number): void {
+export function checkPageLimit(pages: number): void {
   if (pages > MAX_PAGES) throw new UserFacingError(`This PDF has more than ${MAX_PAGES} pages, which is above ILMPDF's limit.`);
 }
 

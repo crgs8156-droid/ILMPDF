@@ -313,6 +313,42 @@ async function scannedPdf() {
   return doc.save();
 }
 
+// Lines of made-up text for the OCR test file. Tests search for these words.
+export const SCAN_LINES = [
+  ['Quarterly garden report', 'The tomatoes grew quickly this summer.', 'Invoice number 4821 is due on 12 March.'],
+  ['This page has real text already.', 'OCR should leave it alone.'],
+  ['Sideways scan of a delivery note', 'Parcel 7395 left the depot on Friday.'],
+];
+
+// Draws text with pdf-lib, then turns the page into a picture with MuPDF, so
+// the result looks like a scan: an image with no text anyone can select.
+async function textAsPicture(lines) {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const page = doc.addPage(A4);
+  lines.forEach((line, i) => page.drawText(line, { x: 60, y: 760 - i * 34, size: i === 0 ? 22 : 15, font }));
+  const pdf = mupdf.Document.openDocument(await doc.save(), 'application/pdf');
+  const pix = pdf.loadPage(0).toPixmap(mupdf.Matrix.scale(200 / 72, 200 / 72), mupdf.ColorSpace.DeviceGray, false, true);
+  return pix.asPNG();
+}
+
+// Two scanned pages (one stored sideways and turned upright by the page's
+// rotation) around a page that already has real text.
+async function scannedTextPdf() {
+  const doc = await newDoc('Scanned text');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const first = await doc.embedPng(await textAsPicture(SCAN_LINES[0]));
+  doc.addPage(A4).drawImage(first, { x: 0, y: 0, width: A4[0], height: A4[1] });
+  const typed = doc.addPage(A4);
+  SCAN_LINES[1].forEach((line, i) => typed.drawText(line, { x: 60, y: 760 - i * 30, size: 15, font }));
+  // Stored landscape and drawn turned a quarter left; /Rotate 90 turns it back.
+  const third = await doc.embedPng(await textAsPicture(SCAN_LINES[2]));
+  const sideways = doc.addPage([A4[1], A4[0]]);
+  sideways.drawImage(third, { x: A4[1], y: 0, width: A4[0], height: A4[1], rotate: degrees(90) });
+  sideways.setRotation(degrees(90));
+  return doc.save();
+}
+
 // A made-up letter full of "private" details to practise redaction on: the
 // same account number on both pages (the second page is rotated), a photo,
 // a drawn shape, a link, a filled-in form field, bookmarks and attached files.
@@ -430,6 +466,7 @@ export async function buildTestFiles() {
     },
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
+    { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },

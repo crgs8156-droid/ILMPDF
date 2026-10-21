@@ -15,7 +15,10 @@
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    // tesseract-wasm ships type definitions but its package "exports" map
+    // does not point to them, so tell TypeScript where they are.
+    "paths": { "tesseract-wasm": ["./node_modules/tesseract-wasm/dist/index.d.ts"] }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "vite.config.ts", "playwright.config.ts", "security-headers.ts"]
 }

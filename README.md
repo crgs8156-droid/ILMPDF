@@ -10,7 +10,8 @@ files never leave your computer: the app is technically blocked from using the n
 - Organize pages with thumbnails: reorder, rotate, delete, extract
 - Images (JPG, PNG, and other formats Safari can open, such as WebP) to PDF
 - PDF to PNG or JPG images
-- PDF to text: save the text as a .txt file, with a preview (scanned pages need OCR, which is not included)
+- PDF to text: save the text as a .txt file, with a preview (scanned pages need OCR first)
+- OCR: make scanned pages searchable by adding an invisible text layer (English; Tesseract runs locally, its model is bundled)
 - Add page numbers
 - Add a text watermark
 - Fill in PDF forms (text, checkboxes, dropdowns, radio buttons), optionally flattening them
