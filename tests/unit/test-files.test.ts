@@ -10,7 +10,7 @@ describe('make-test-pdfs', async () => {
   const byName = Object.fromEntries(files.map((f) => [f.name, f.bytes]));
 
   it('builds every file with a purpose', () => {
-    expect(files.length).toBe(24);
+    expect(files.length).toBe(25);
     for (const f of files) {
       expect(f.bytes.length).toBeGreaterThan(0);
       expect(f.purpose.length).toBeGreaterThan(0);
@@ -33,6 +33,7 @@ describe('make-test-pdfs', async () => {
       '19-redaction-sample.pdf': 2,
       '20-with-scripts.pdf': 3,
       '21-form-with-scripts.pdf': 1,
+      '22-scanned-text.pdf': 3,
     };
     for (const [name, count] of Object.entries(expected)) {
       const doc = await PDFDocument.load(byName[name]!);

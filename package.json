@@ -22,7 +22,8 @@
   "dependencies": {
     "mupdf": "1.28.1",
     "pdf-lib": "1.17.1",
-    "pdfjs-dist": "6.3.289"
+    "pdfjs-dist": "6.3.289",
+    "tesseract-wasm": "0.11.0"
   },
   "devDependencies": {
     "@napi-rs/canvas": "file:vendor/stubs/napi-rs-canvas",

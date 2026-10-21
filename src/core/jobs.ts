@@ -41,6 +41,14 @@ export type MupdfJob =
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
+/** OCR job: `pages` are 0-based (empty = every page). */
+export type OcrJob = { op: 'ocr'; file: Uint8Array; pages: number[]; skipText: boolean };
+
+export type OcrRequest = { id: string; job: OcrJob };
+
+/** Sent by the OCR worker before each page, so the tool can show progress. */
+export type OcrProgressMessage = { id: string; progress: { done: number; total: number } };
+
 export type JobOutput = {
   files?: Uint8Array[];
   count?: number;
