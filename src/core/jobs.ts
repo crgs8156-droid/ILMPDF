@@ -2,6 +2,7 @@
 // own copy of each file; every job receives fresh copies that are
 // transferred (moved, not cloned) into the worker.
 import type { CropBox, ImageInput, NumberPosition, PagePlan, PageSize, SignaturePlacement } from '../engines/pdflib-ops';
+import type { TextDiff } from './word-diff';
 import type { CompressLevel, FormField, FormValues, NewAnnotation, PdfInfo, ProtectOptions, RedactBox, RedactOptions, SanitizeReport, TextResult } from '../engines/mupdf-ops';
 
 export type PdfJob =
@@ -37,7 +38,9 @@ export type MupdfJob =
   | { op: 'annotate'; file: Uint8Array; items: NewAnnotation[] }
   | { op: 'findText'; file: Uint8Array; text: string }
   | { op: 'redact'; file: Uint8Array; boxes: RedactBox[]; options: RedactOptions }
-  | { op: 'sanitize'; file: Uint8Array };
+  | { op: 'sanitize'; file: Uint8Array }
+  // Compare PDFs: files[0] is the older version, files[1] the newer one.
+  | { op: 'compareText'; files: [Uint8Array, Uint8Array] };
 
 export type MupdfRequest = { id: string; job: MupdfJob };
 
@@ -62,6 +65,7 @@ export type JobOutput = {
   /** Names of attached files that redaction could not check (untrusted text). */
   unchecked?: string[];
   removed?: SanitizeReport;
+  diff?: TextDiff & { pagesA: number; pagesB: number };
 };
 
 export type JobResult = ({ ok: true } & JobOutput & { id: string }) | { id: string; ok: false; error: string };

@@ -405,6 +405,40 @@ async function redactionPdf() {
   return doc.save();
 }
 
+// Two versions of a made-up report for Compare PDFs. The newer one changes
+// two numbers and adds a sentence on page 2, moves a square on page 3
+// (a change you can only see, not read) and adds a fourth page.
+async function comparePdf(newer) {
+  const doc = await newDoc(newer ? 'Compare sample, version 2' : 'Compare sample, version 1');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const line = (page, text, y, f = font) => page.drawText(text, { x: 60, y, size: 14, font: f });
+
+  const first = doc.addPage(A4);
+  line(first, 'Quarterly report (made up)', 780, bold);
+  line(first, 'This first page is the same in both versions.', 740);
+  line(first, 'Nothing here should show up as a change.', 715);
+
+  const second = doc.addPage(A4);
+  line(second, 'Costs', 780, bold);
+  line(second, `The total cost was ${newer ? 1500 : 1200} pounds.`, 740);
+  line(second, `Payment is due in ${newer ? 14 : 30} days.`, 715);
+  if (newer) line(second, 'A late fee of 20 pounds applies.', 690);
+  line(second, 'Thank you for your business.', newer ? 665 : 690);
+
+  const third = doc.addPage(A4);
+  line(third, 'Appendix', 780, bold);
+  line(third, 'The text on this page does not change, but the square moves.', 740);
+  third.drawRectangle({ x: newer ? 360 : 60, y: 500, width: 150, height: 150, color: COLORS[1] });
+
+  if (newer) {
+    const fourth = doc.addPage(A4);
+    line(fourth, 'New page', 780, bold);
+    line(fourth, 'This page only exists in version two.', 740);
+  }
+  return doc.save();
+}
+
 // ---- The full set ----
 
 export async function buildTestFiles() {
@@ -467,6 +501,8 @@ export async function buildTestFiles() {
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
+    { name: '23-compare-original.pdf', purpose: 'Compare PDFs, older version: three pages of a made-up report. Compare it with 24-compare-changed.pdf.', bytes: await comparePdf(false) },
+    { name: '24-compare-changed.pdf', purpose: 'Compare PDFs, newer version: page 2 has new numbers and an added sentence, the square on page 3 moved (visual only), and page 4 is new.', bytes: await comparePdf(true) },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
