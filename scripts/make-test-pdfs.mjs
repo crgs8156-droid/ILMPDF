@@ -10,6 +10,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
+import { pageToolsTestFiles } from './page-tools-test-pdfs.mjs';
 import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
@@ -467,6 +468,7 @@ export async function buildTestFiles() {
     { name: '20-with-scripts.pdf', purpose: 'Three pages with a document script, an on-open script, a launch action, a javascript: link and an attached file: Remove scripts should report and remove them, keeping the web link and the page link.', bytes: await scriptedPdf() },
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
+    ...(await pageToolsTestFiles()),
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
