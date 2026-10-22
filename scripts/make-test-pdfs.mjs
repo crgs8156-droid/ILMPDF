@@ -605,6 +605,16 @@ export async function buildTestFiles() {
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     { name: '29-images-mixed.pdf', purpose: 'Three pages with a JPEG photo (used twice), a transparent picture, a tiny icon, a grayscale and a CMYK picture, and a picture inside a placed page: Extract images should save 5 (skipping the icon and the repeat).', bytes: await imagesPdf() },
     { name: '30-no-images.pdf', purpose: 'Two pages of text and shapes with no pictures: Extract images should say none were found.', bytes: await noImagesPdf() },
+    {
+      name: '27-headers-mixed-pages.pdf',
+      purpose: 'Letter, landscape A4, A5 turned 90 degrees and Letter turned 270 degrees: Headers & footers should sit at the top and bottom of every page as shown, reading upright.',
+      bytes: await pagesPdf('Headers', [LETTER, [A4[1], A4[0]], A5, LETTER], { rotations: [0, 0, 90, 270] }),
+    },
+    {
+      name: '28-bates-sample.pdf',
+      purpose: 'Twelve Letter pages with a cover: try Bates numbers such as ABC000001 on pages "2-" so the cover gets none.',
+      bytes: await pagesPdf('Bates sample', Array(12).fill(LETTER)),
+    },
     { name: '23-compare-original.pdf', purpose: 'Compare PDFs, older version: three pages of a made-up report. Compare it with 24-compare-changed.pdf.', bytes: await comparePdf(false) },
     { name: '24-compare-changed.pdf', purpose: 'Compare PDFs, newer version: page 2 has new numbers and an added sentence, the square on page 3 moved (visual only), and page 4 is new.', bytes: await comparePdf(true) },
     { name: '36-metadata-unicode.pdf', purpose: 'Title, author and keywords with accents, Greek and Japanese: Edit metadata should show and keep them correctly.', bytes: await unicodeMetadataPdf() },
