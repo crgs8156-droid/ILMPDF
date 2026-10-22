@@ -1,7 +1,8 @@
 // Checks the real preview server: every kind of reply (page, scripts,
 // workers, WebAssembly, styles, 304s, 404s) carries the full set of
 // security headers, and the server can't be reached from other devices.
-import { expect, test, type APIResponse } from '@playwright/test';
+import { expect, test } from './fixtures';
+import type { APIResponse } from '@playwright/test';
 import { readdirSync } from 'node:fs';
 import { connect } from 'node:net';
 import { networkInterfaces } from 'node:os';
