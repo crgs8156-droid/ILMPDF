@@ -8,6 +8,7 @@ files never leave your computer: the app is technically blocked from using the n
 - Merge PDFs, in the order you choose
 - Split by page ranges or every N pages
 - Organize pages with thumbnails: reorder, rotate, delete, extract
+- Page tools: resize pages to A4, Letter and other sizes (content scaled to fit), insert blank pages or pages from another PDF, and find and remove blank pages
 - Images (JPG, PNG, and other formats Safari can open, such as WebP) to PDF
 - PDF to PNG or JPG images
 - PDF to text: save the text as a .txt file, with a preview (scanned pages need OCR first)
