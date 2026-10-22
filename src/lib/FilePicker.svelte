@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Icon from './Icon.svelte';
+  import { UI_ICONS } from './icons';
   type Props = {
     onFiles: (files: File[]) => void;
     accept?: string;
@@ -49,6 +51,7 @@
   onclick={() => input.click()}
   onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && input.click()}
 >
+  {#if !compact}<span class="art"><Icon d={UI_ICONS.drop} size={44} /></span>{/if}
   <p class="title">{title}</p>
   {#if !compact}<p class="hint">{hint}</p>{/if}
   <input bind:this={input} type="file" {accept} {multiple} hidden data-testid="file-input" onchange={handlePick} />
@@ -56,20 +59,31 @@
 
 <style>
   .zone {
-    border: 2px dashed var(--border);
-    border-radius: 12px;
-    padding: 40px 16px;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+    border: 2px dashed color-mix(in srgb, var(--accent) 35%, var(--border));
+    border-radius: 16px;
+    padding: 44px 16px;
     text-align: center;
-    background: var(--surface);
+    background: linear-gradient(180deg, var(--accent-soft), var(--surface) 70%);
     cursor: pointer;
+    transition: border-color 120ms;
   }
   .zone.compact {
     padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--surface);
   }
+  .zone:hover,
   .zone.dragging,
   .zone:focus-visible {
     border-color: var(--accent);
     outline: none;
+  }
+  .art {
+    display: grid;
+    color: var(--accent);
   }
   .title {
     margin: 0;
@@ -80,7 +94,7 @@
     font-size: 15px;
   }
   .hint {
-    margin: 4px 0 0;
+    margin: 0;
     color: var(--muted);
     font-size: 14px;
   }
