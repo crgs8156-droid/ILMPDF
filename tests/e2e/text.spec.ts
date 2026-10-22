@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests } from './helpers';
 import { makePdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
