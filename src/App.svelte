@@ -1,5 +1,6 @@
 <script lang="ts">
   import SecurityBadge from './lib/SecurityBadge.svelte';
+  import DropWheel from './lib/DropWheel.svelte';
   import { TOOLS, type Tool } from './tools/registry';
 
   // The current tool lives in the URL hash so Back/Forward work.
@@ -38,6 +39,7 @@
     </section>
   {:else}
     <p class="lead">Private PDF tools. Every file stays on this Mac; the network is blocked.</p>
+    <p class="tip" data-testid="wheel-tip">Tip: drag a PDF onto this page and drop it on a tool in the wheel that appears.</p>
     {#each groups as group (group)}
       <h2 class="group">{group}</h2>
       <ul class="tools">
@@ -53,6 +55,9 @@
     {/each}
   {/if}
 </main>
+
+<!-- Only on the home page: each tool has its own drop area. -->
+<DropWheel enabled={!current} />
 
 <style>
   main {
@@ -80,6 +85,11 @@
   .lead {
     margin: 0;
     color: var(--muted);
+  }
+  .tip {
+    margin: -8px 0 0;
+    color: var(--muted);
+    font-size: 13px;
   }
   .group {
     margin: 8px 0 0;
