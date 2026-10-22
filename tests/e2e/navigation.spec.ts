@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { addPdf, offOrigin, openTool, trackRequests } from './helpers';
 import { makePdf } from '../fixtures/make-pdf';
 
