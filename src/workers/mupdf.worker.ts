@@ -55,6 +55,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { files, ...extracted } = extractImages(mupdf, job.file, job.opts);
       return { files, extracted };
     }
+    case 'compareText':
+      return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
   }
 }
 

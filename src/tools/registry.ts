@@ -20,6 +20,7 @@ import AnnotateTool from './AnnotateTool.svelte';
 import RedactTool from './RedactTool.svelte';
 import SanitizeTool from './SanitizeTool.svelte';
 import OcrTool from './OcrTool.svelte';
+import CompareTool from './CompareTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -32,6 +33,7 @@ export const TOOLS: Tool[] = [
   { id: 'pdf-to-text', name: 'PDF to text', blurb: 'Save the text of a PDF as a plain .txt file.', group: 'Convert', component: PdfToTextTool },
   { id: 'ocr', name: 'OCR (make searchable)', blurb: 'Recognise the text in scanned pages so you can search, select and copy it.', group: 'Convert', component: OcrTool },
   { id: 'extract-images', name: 'Extract images', blurb: 'Save the original pictures stored inside a PDF, at full quality.', group: 'Convert', component: ExtractImagesTool },
+  { id: 'compare', name: 'Compare PDFs', blurb: 'See what changed between two versions: words added and removed, and pages that look different.', group: 'Organize', component: CompareTool },
   { id: 'crop', name: 'Crop pages', blurb: 'Trim the edges of pages by drawing the area to keep.', group: 'Edit', component: CropTool },
   { id: 'page-numbers', name: 'Page numbers', blurb: 'Stamp page numbers on every page.', group: 'Edit', component: PageNumbersTool },
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
