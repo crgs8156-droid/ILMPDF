@@ -5,6 +5,7 @@ import OrganizeTool from './OrganizeTool.svelte';
 import ImagesToPdfTool from './ImagesToPdfTool.svelte';
 import PdfToImagesTool from './PdfToImagesTool.svelte';
 import PageNumbersTool from './PageNumbersTool.svelte';
+import HeaderFooterTool from './HeaderFooterTool.svelte';
 import WatermarkTool from './WatermarkTool.svelte';
 import MetadataTool from './MetadataTool.svelte';
 import UnlockTool from './UnlockTool.svelte';
@@ -35,6 +36,7 @@ export const TOOLS: Tool[] = [
   { id: 'compare', name: 'Compare PDFs', blurb: 'See what changed between two versions: words added and removed, and pages that look different.', group: 'Organize', component: CompareTool },
   { id: 'crop', name: 'Crop pages', blurb: 'Trim the edges of pages by drawing the area to keep.', group: 'Edit', component: CropTool },
   { id: 'page-numbers', name: 'Page numbers', blurb: 'Stamp page numbers on every page.', group: 'Edit', component: PageNumbersTool },
+  { id: 'header-footer', name: 'Headers & footers', blurb: 'Add headers, footers, dates, file names and Bates numbers to pages.', group: 'Edit', component: HeaderFooterTool },
   { id: 'watermark', name: 'Watermark', blurb: 'Stamp text such as CONFIDENTIAL across every page.', group: 'Edit', component: WatermarkTool },
   { id: 'annotate', name: 'Annotate PDF', blurb: 'Add text boxes, highlights, shapes and comments to pages.', group: 'Edit', component: AnnotateTool },
   { id: 'sign', name: 'Sign PDF', blurb: 'Draw your signature or use an image of it, then place it on the page.', group: 'Edit', component: SignTool },
