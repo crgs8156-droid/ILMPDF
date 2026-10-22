@@ -44,6 +44,11 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
 - `npm run verify`: everything above, in order; must pass before any PR
 - `npm run make-test-pdfs`: write generated test files into `test-pdfs/`
 - `npm run audit:deps`: npm audit + registry signature check
+- `npm run security:check`: static security checks (lockfile, `.npmrc`, banned code,
+  egress scan, no PDFs, secrets); runs first in `verify`, with a `dist/` check after the build
+- `npm run security:daily`: the owner's check before daily use (git state, built app, all of the above, audit)
+- New dependency approved? Update `scripts/approved-packages.txt` with
+  `node scripts/security-check.mjs --approve-packages` in the same PR.
 
 ## Layout
 
