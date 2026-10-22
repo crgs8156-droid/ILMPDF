@@ -23,6 +23,9 @@
     border-color: var(--bad);
     color: var(--bad);
   }
+  .info {
+    border-color: var(--accent);
+  }
   .ok {
     border-color: var(--good);
     color: var(--good);
