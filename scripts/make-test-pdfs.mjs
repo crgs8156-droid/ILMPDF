@@ -405,6 +405,40 @@ async function redactionPdf() {
   return doc.save();
 }
 
+// Two versions of a made-up report for Compare PDFs. The newer one changes
+// two numbers and adds a sentence on page 2, moves a square on page 3
+// (a change you can only see, not read) and adds a fourth page.
+async function comparePdf(newer) {
+  const doc = await newDoc(newer ? 'Compare sample, version 2' : 'Compare sample, version 1');
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const line = (page, text, y, f = font) => page.drawText(text, { x: 60, y, size: 14, font: f });
+
+  const first = doc.addPage(A4);
+  line(first, 'Quarterly report (made up)', 780, bold);
+  line(first, 'This first page is the same in both versions.', 740);
+  line(first, 'Nothing here should show up as a change.', 715);
+
+  const second = doc.addPage(A4);
+  line(second, 'Costs', 780, bold);
+  line(second, `The total cost was ${newer ? 1500 : 1200} pounds.`, 740);
+  line(second, `Payment is due in ${newer ? 14 : 30} days.`, 715);
+  if (newer) line(second, 'A late fee of 20 pounds applies.', 690);
+  line(second, 'Thank you for your business.', newer ? 665 : 690);
+
+  const third = doc.addPage(A4);
+  line(third, 'Appendix', 780, bold);
+  line(third, 'The text on this page does not change, but the square moves.', 740);
+  third.drawRectangle({ x: newer ? 360 : 60, y: 500, width: 150, height: 150, color: COLORS[1] });
+
+  if (newer) {
+    const fourth = doc.addPage(A4);
+    line(fourth, 'New page', 780, bold);
+    line(fourth, 'This page only exists in version two.', 740);
+  }
+  return doc.save();
+}
+
 // ---- Edit metadata (files 36-37) ----
 
 // Accented and non-Latin details, stored as UTF-16 like real apps do.
@@ -507,6 +541,8 @@ export async function buildTestFiles() {
       purpose: 'Twelve Letter pages with a cover: try Bates numbers such as ABC000001 on pages "2-" so the cover gets none.',
       bytes: await pagesPdf('Bates sample', Array(12).fill(LETTER)),
     },
+    { name: '23-compare-original.pdf', purpose: 'Compare PDFs, older version: three pages of a made-up report. Compare it with 24-compare-changed.pdf.', bytes: await comparePdf(false) },
+    { name: '24-compare-changed.pdf', purpose: 'Compare PDFs, newer version: page 2 has new numbers and an added sentence, the square on page 3 moved (visual only), and page 4 is new.', bytes: await comparePdf(true) },
     { name: '36-metadata-unicode.pdf', purpose: 'Title, author and keywords with accents, Greek and Japanese: Edit metadata should show and keep them correctly.', bytes: await unicodeMetadataPdf() },
     { name: '37-metadata-with-xmp.pdf', purpose: 'Has a hidden XMP copy saying "Stale XMP title" and "Stale XMP Author": after Edit metadata saves, neither should remain.', bytes: await xmpMetadataPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
