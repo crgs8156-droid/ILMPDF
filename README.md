@@ -55,7 +55,8 @@ npm run security:daily
 
 It checks that your copy is exactly the reviewed code on GitHub, that the
 build is fresh, the lockfile and `.npmrc` are intact, the code has no
-network calls or unsafe patterns, and `npm audit` is clean. If it says
+network calls or unsafe patterns, the security headers and 127.0.0.1-only
+server settings are the approved ones, and `npm audit` is clean. If it says
 **DAILY CHECK FAILED**, don't open real documents until it is fixed.
 
 ## Development

@@ -3,7 +3,8 @@
 // 1. Your copy is the reviewed code: on main, no local edits, same commit
 //    as GitHub (asks GitHub for the latest main; nothing else is sent).
 // 2. The static security checks (lockfile, .npmrc, code scans, built app).
-// 3. npm audit and registry signatures for known vulnerabilities.
+// 3. The CSP, security headers and 127.0.0.1 binding are the approved ones.
+// 4. npm audit and registry signatures for known vulnerabilities.
 // If anything fails, don't open real documents until it is fixed.
 
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -49,6 +50,12 @@ step('The built app is up to date', () => {
 step('Static security checks', () => {
   const r = spawnSync('node', [path.join(ROOT, 'scripts', 'security-check.mjs'), '--dist'], { cwd: ROOT, stdio: 'inherit' });
   return r.status === 0 ? [] : ['see the FAIL lines above'];
+});
+
+step('Security headers and server binding are the approved ones', () => {
+  const vitest = path.join(ROOT, 'node_modules', '.bin', 'vitest');
+  const r = spawnSync(vitest, ['run', 'tests/unit/security-headers.test.ts'], { cwd: ROOT, stdio: 'inherit' });
+  return r.status === 0 ? [] : ['the CSP, a header or the 127.0.0.1 binding changed'];
 });
 
 step('Known vulnerabilities and package signatures (npm audit)', () => {

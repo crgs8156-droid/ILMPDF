@@ -6,6 +6,7 @@ import * as ops from '../engines/pdflib-ops';
 import * as pageTools from '../engines/pagetools-ops';
 import { addHeaderFooter } from '../engines/header-footer';
 import { editMetadata } from '../engines/metadata-edit';
+import { recolorOverlay } from '../engines/recolor';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -41,6 +42,8 @@ async function run(job: PdfJob): Promise<JobOutput> {
       return { files: [await pageTools.insertPages(job.file, job.opts, job.files[0])] };
     case 'headerFooter':
       return { files: [await addHeaderFooter(job.file, job.opts)] };
+    case 'recolorOverlay':
+      return { files: [await recolorOverlay(job.file, job.opts)] };
   }
 }
 

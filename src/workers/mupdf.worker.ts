@@ -7,6 +7,7 @@ import { UserFacingError } from '../engines/pdflib-ops';
 import * as ops from '../engines/mupdf-ops';
 import { extractImages } from '../engines/mupdf-images';
 import { flatten } from '../engines/mupdf-flatten';
+import { recolorRaster } from '../engines/mupdf-recolor';
 import { readBookmarks, writeBookmarks } from '../engines/mupdf-bookmarks';
 import { removePages } from '../engines/mupdf-pages';
 
@@ -62,6 +63,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { file, annotations, fields, signatures } = flatten(mupdf, job.file, job.opts);
       return { files: [file], meta: { annotations: String(annotations), fields: String(fields), signatures: String(signatures) } };
     }
+    case 'recolorRaster':
+      return { files: [recolorRaster(mupdf, job.file, job.opts)] };
     case 'compareText':
       return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
     case 'readBookmarks': {
