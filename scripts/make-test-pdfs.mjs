@@ -12,6 +12,7 @@ import path from 'node:path';
 import * as mupdf from 'mupdf';
 import { pageToolsTestFiles } from './page-tools-test-pdfs.mjs';
 import { recolorTestFiles } from './recolor-test-pdfs.mjs';
+import { chaptersPdf, trickyPdf } from './bookmark-test-pdfs.mjs';
 import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
@@ -636,6 +637,8 @@ export async function buildTestFiles() {
     { name: '36-metadata-unicode.pdf', purpose: 'Title, author and keywords with accents, Greek and Japanese: Edit metadata should show and keep them correctly.', bytes: await unicodeMetadataPdf() },
     { name: '37-metadata-with-xmp.pdf', purpose: 'Has a hidden XMP copy saying "Stale XMP title" and "Stale XMP Author": after Edit metadata saves, neither should remain.', bytes: await xmpMetadataPdf() },
     ...(await recolorTestFiles()),
+    { name: '38-bookmarks-chapters.pdf', purpose: 'Cover page, three chapters with nested sections and an appendix (12 pages): view, edit and split by bookmarks. Split at top level makes 5 files.', bytes: await chaptersPdf(newDoc) },
+    { name: '39-bookmarks-tricky.pdf', purpose: 'Bookmarks out of page order, a web link, a script, a broken target, a named destination, an HTML-looking title, a very long title and a looped list: should show safely and never run anything.', bytes: await trickyPdf(newDoc) },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },

@@ -26,6 +26,7 @@ import PageToolsTool from './PageToolsTool.svelte';
 import FlattenTool from './FlattenTool.svelte';
 import CompareTool from './CompareTool.svelte';
 import RecolorTool from './RecolorTool.svelte';
+import BookmarksTool from './BookmarksTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
 
@@ -35,6 +36,7 @@ export const TOOLS: Tool[] = [
   { id: 'batch', name: 'Batch process', blurb: 'Run one action on many PDFs at once and save the results as one ZIP.', group: 'Organize', component: BatchTool },
   { id: 'organize', name: 'Organize pages', blurb: 'Reorder, rotate, delete or extract pages with thumbnails.', group: 'Organize', component: OrganizeTool },
   { id: 'page-tools', name: 'Page tools', blurb: 'Resize pages to A4, Letter and more, insert blank or other pages, or remove blank pages.', group: 'Organize', component: PageToolsTool },
+  { id: 'bookmarks', name: 'Bookmarks', blurb: 'View, edit and add bookmarks, or split a PDF into one file per bookmark.', group: 'Organize', component: BookmarksTool },
   { id: 'images-to-pdf', name: 'Images to PDF', blurb: 'Turn JPG, PNG, HEIC or WebP images into a PDF.', group: 'Convert', component: ImagesToPdfTool },
   { id: 'pdf-to-images', name: 'PDF to images', blurb: 'Save pages as PNG or JPG images.', group: 'Convert', component: PdfToImagesTool },
   { id: 'pdf-to-text', name: 'PDF to text', blurb: 'Save the text of a PDF as a plain .txt file.', group: 'Convert', component: PdfToTextTool },
