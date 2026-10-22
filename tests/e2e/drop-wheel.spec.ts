@@ -21,8 +21,13 @@ async function drag(page: Page, items: Drop[], points: [number, number][], end: 
     ({ payload, points, end }) => {
       const dt = new DataTransfer();
       for (const f of payload) dt.items.add(new File([new Uint8Array(f.data)], f.name, { type: f.type }));
-      const fire = (type: string, [x, y]: [number, number]) =>
-        document.body.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt }));
+      const fire = (type: string, [x, y]: [number, number]) => {
+        const event = new DragEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: dt });
+        // WebKit leaves a script-made drag event's position at 0, 0, so set it directly.
+        Object.defineProperty(event, 'clientX', { value: x });
+        Object.defineProperty(event, 'clientY', { value: y });
+        document.body.dispatchEvent(event);
+      };
       fire('dragenter', points[0]!);
       for (const p of points) fire('dragover', p);
       const last = points[points.length - 1]!;
