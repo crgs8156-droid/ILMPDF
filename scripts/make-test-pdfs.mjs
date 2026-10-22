@@ -10,6 +10,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
+import { pageToolsTestFiles } from './page-tools-test-pdfs.mjs';
 import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
@@ -542,6 +543,7 @@ export async function buildTestFiles() {
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     { name: '25-batch-letter.pdf', purpose: 'Two Letter pages with author "Batch Example": use with 02, 08 and 17 in Batch process (for example Remove metadata or Compress).', bytes: await batchLetterPdf() },
     { name: '26-batch-broken-inside.pdf', purpose: 'Starts like a PDF but the rest is junk: in Batch process it should be listed as failed while the other files are still saved.', bytes: new TextEncoder().encode('%PDF-1.7\n%\xe2\xe3\xcf\xd3\nThis is not a PDF body, just junk text.\n'.repeat(4)) },
+    ...(await pageToolsTestFiles()),
     { name: '31-flatten-form-and-comments.pdf', purpose: 'The test form, filled in, plus a highlight, a note, a text box, a rectangle and an ink "signature": Flatten should report 5 form fields and 5 annotations.', bytes: await flattenFormPdf() },
     { name: '32-flatten-with-links.pdf', purpose: 'Two pages with 5 annotations each, a web link and a link to page 2: after Flatten both links must still work.', bytes: await flattenLinksPdf() },
     {
