@@ -6,6 +6,7 @@ import type { JobResult, MupdfJob, MupdfRequest, JobOutput } from '../core/jobs'
 import { UserFacingError } from '../engines/pdflib-ops';
 import * as ops from '../engines/mupdf-ops';
 import { extractImages } from '../engines/mupdf-images';
+import { flatten } from '../engines/mupdf-flatten';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -54,6 +55,10 @@ async function run(job: MupdfJob): Promise<JobOutput> {
     case 'extractImages': {
       const { files, ...extracted } = extractImages(mupdf, job.file, job.opts);
       return { files, extracted };
+    }
+    case 'flatten': {
+      const { file, annotations, fields, signatures } = flatten(mupdf, job.file, job.opts);
+      return { files: [file], meta: { annotations: String(annotations), fields: String(fields), signatures: String(signatures) } };
     }
     case 'compareText':
       return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
