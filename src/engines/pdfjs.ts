@@ -135,6 +135,30 @@ export async function pageToImage(
   }
 }
 
+/**
+ * Renders a page (1-based) at an exact pixel width, on white, and returns its
+ * pixels. Compare PDFs uses this so both files are drawn at the same size
+ * whatever the screen's pixel density.
+ */
+export async function pagePixels(doc: PDFDocumentProxy, pageNumber: number, pixelWidth: number): Promise<ImageData> {
+  const page = await doc.getPage(pageNumber);
+  const canvas = document.createElement('canvas');
+  try {
+    const base = page.getViewport({ scale: 1 });
+    const viewport = page.getViewport({ scale: pixelWidth / base.width });
+    canvas.width = Math.max(1, Math.floor(viewport.width));
+    canvas.height = Math.max(1, Math.floor(viewport.height));
+    await page.render({ canvas, viewport, background: '#ffffff' }).promise;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Could not draw the page.');
+    return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  } finally {
+    canvas.width = 0;
+    canvas.height = 0;
+    page.cleanup();
+  }
+}
+
 /** Frees the document and stops its PDF.js worker. */
 export async function closePdf(doc: PDFDocumentProxy | null | undefined): Promise<void> {
   if (doc) await doc.loadingTask.destroy();
