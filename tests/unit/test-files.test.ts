@@ -10,7 +10,7 @@ describe('make-test-pdfs', async () => {
   const byName = Object.fromEntries(files.map((f) => [f.name, f.bytes]));
 
   it('builds every file with a purpose', () => {
-    expect(files.length).toBe(30);
+    expect(files.length).toBe(32);
     for (const f of files) {
       expect(f.bytes.length).toBeGreaterThan(0);
       expect(f.purpose.length).toBeGreaterThan(0);
@@ -37,6 +37,8 @@ describe('make-test-pdfs', async () => {
       '33-resize-sample.pdf': 4,
       '34-insert-me.pdf': 2,
       '35-blank-pages.pdf': 8,
+      '23-compare-original.pdf': 3,
+      '24-compare-changed.pdf': 4,
     };
     for (const [name, count] of Object.entries(expected)) {
       const doc = await PDFDocument.load(byName[name]!);
