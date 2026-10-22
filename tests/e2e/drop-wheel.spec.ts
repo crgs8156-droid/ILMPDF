@@ -17,8 +17,9 @@ type Drop = { name: string; bytes: Uint8Array; type?: string };
  */
 async function drag(page: Page, items: Drop[], points: [number, number][], end: 'drop' | 'leave' | 'none' = 'drop') {
   const payload = items.map((f) => ({ name: f.name, type: f.type ?? 'application/pdf', data: Array.from(f.bytes) }));
-  await page.evaluate(
+  return page.evaluate(
     ({ payload, points, end }) => {
+      const seen: unknown[] = [];
       const dt = new DataTransfer();
       for (const f of payload) dt.items.add(new File([new Uint8Array(f.data)], f.name, { type: f.type }));
       const fire = (type: string, [x, y]: [number, number]) => {
@@ -27,12 +28,14 @@ async function drag(page: Page, items: Drop[], points: [number, number][], end: 
         Object.defineProperty(event, 'clientX', { value: x });
         Object.defineProperty(event, 'clientY', { value: y });
         document.body.dispatchEvent(event);
+        seen.push({ type, x: event.clientX, y: event.clientY, types: Array.from(event.dataTransfer?.types ?? []), prevented: event.defaultPrevented });
       };
       fire('dragenter', points[0]!);
       for (const p of points) fire('dragover', p);
       const last = points[points.length - 1]!;
       if (end === 'drop') fire('drop', last);
       if (end === 'leave') fire('dragleave', last);
+      return seen;
     },
     { payload, points, end },
   );
@@ -64,7 +67,16 @@ test('wheel: appears when a file is dragged in, highlights the slice under the c
   await expect(page.getByTestId('wheel')).toBeVisible();
   await expect(page.locator('[data-testid^="wheel-label-"]')).toHaveCount(7);
 
-  await drag(page, [item], [await sliceAt(page, 'text')], 'none');
+  const at = await sliceAt(page, 'text');
+  const seen = await drag(page, [item], [at], 'none');
+  // TEMP diagnostics for WebKit in CI.
+  const dom = await page.evaluate(() => ({
+    hint: document.querySelector('[data-testid=wheel-hint]')?.textContent,
+    svg: document.querySelector('[data-testid=wheel]')?.getBoundingClientRect().toJSON(),
+    label: document.querySelector('[data-testid=wheel-label-text]')?.getBoundingClientRect().toJSON(),
+    hot: Array.from(document.querySelectorAll('.slice.hot')).map((g) => g.getAttribute('data-testid')),
+  }));
+  console.log('WHEEL-DIAG', JSON.stringify({ at, seen, dom }));
   await expect(page.getByTestId('wheel-text')).toHaveClass(/hot/);
   await expect(page.getByTestId('wheel-hint')).toHaveText('Save the text as a .txt file');
 
