@@ -8,3 +8,4 @@ export const MAX_ANNOTATIONS = 500; // per Annotate job
 export const MAX_INK_POINTS = 2_000; // per freehand stroke, so a drawing can't bloat the file
 // OCR reads one page at a time, so its time limit is per page, not per job.
 export const OCR_PAGE_TIMEOUT_MS = 120_000;
+export const MAX_IMAGES = 500; // per Extract images job
