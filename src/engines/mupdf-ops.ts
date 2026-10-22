@@ -4,6 +4,7 @@
 import type * as MuPDF from 'mupdf';
 import { MAX_ANNOTATIONS, MAX_INK_POINTS, MAX_PAGES } from '../core/limits';
 import { UserFacingError } from './pdflib-ops';
+import { diffWords, type TextDiff } from '../core/word-diff';
 
 /**
  * encrypted: the file uses PDF encryption at all.
@@ -514,6 +515,29 @@ export function extractText(mupdf: Mupdf, bytes: Uint8Array): TextResult {
     return { pages, chars };
   } finally {
     pdf.destroy();
+  }
+}
+
+/**
+ * Compare PDFs: reads the text of both files and compares it word by word.
+ * Done here, in the worker, so a long comparison never freezes the page.
+ */
+export function compareText(mupdf: Mupdf, older: Uint8Array, newer: Uint8Array): TextDiff & { pagesA: number; pagesB: number } {
+  const read = (bytes: Uint8Array, which: string) => {
+    try {
+      return extractText(mupdf, bytes);
+    } catch (err) {
+      if (err instanceof UserFacingError) throw new UserFacingError(`${which}: ${err.message}`);
+      throw err;
+    }
+  };
+  const a = read(older, 'The older file');
+  const b = read(newer, 'The newer file');
+  try {
+    return { ...diffWords(a.pages, b.pages), pagesA: a.pages.length, pagesB: b.pages.length };
+  } catch (err) {
+    if (err instanceof RangeError) throw new UserFacingError(err.message);
+    throw err;
   }
 }
 

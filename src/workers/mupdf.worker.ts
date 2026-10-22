@@ -55,6 +55,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { file, annotations, fields, signatures } = flatten(mupdf, job.file, job.opts);
       return { files: [file], meta: { annotations: String(annotations), fields: String(fields), signatures: String(signatures) } };
     }
+    case 'compareText':
+      return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
   }
 }
 
