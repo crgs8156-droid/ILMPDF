@@ -1,6 +1,6 @@
 // All PDF editing logic. Pure functions over bytes, so they run inside a
 // Web Worker in the app and directly under Node in unit tests.
-import { degrees, PDFDocument, PDFName, rgb, StandardFonts, type PDFPage } from 'pdf-lib';
+import { degrees, PDFDocument, PDFName, PDFRef, rgb, StandardFonts, type PDFPage } from 'pdf-lib';
 import { MAX_PAGES } from '../core/limits';
 
 export class UserFacingError extends Error {}
@@ -222,9 +222,20 @@ export async function stripMetadata(bytes: Uint8Array): Promise<Uint8Array> {
       for (const k of INFO_KEYS) (info as { delete: (n: PDFName) => void }).delete(PDFName.of(k));
     }
   }
-  doc.catalog.delete(PDFName.of('Metadata'));
+  removeXmp(doc);
   for (const page of doc.getPages()) page.node.delete(PDFName.of('Metadata'));
   return save(doc);
+}
+
+/**
+ * Removes the document's XMP metadata stream. Unlinking it from the catalog
+ * is not enough: pdf-lib still writes objects nothing points to, so the
+ * stream object itself is deleted too.
+ */
+export function removeXmp(doc: PDFDocument): void {
+  const raw = doc.catalog.get(PDFName.of('Metadata'));
+  doc.catalog.delete(PDFName.of('Metadata'));
+  if (raw instanceof PDFRef) doc.context.delete(raw);
 }
 
 function clamp(n: number, lo: number, hi: number): number {
