@@ -40,7 +40,9 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
 - `npm run dev`: dev server at http://127.0.0.1:5173
 - `npm run check`: Svelte + TypeScript type check
 - `npm test`: unit tests (Vitest)
-- `npm run test:e2e`: browser tests (Playwright, WebKit + Chromium) on the production build
+- `npm run test:e2e`: browser tests (Playwright, WebKit + Chromium) on the production build.
+  Every spec imports `test`/`expect` from `tests/e2e/fixtures.ts` (the network watcher: fails a test
+  on any outside request or CSP violation); `tests/unit/e2e-watch.test.ts` enforces it
 - `npm run verify`: everything above, in order; must pass before any PR
 - `npm run make-test-pdfs`: write generated test files into `test-pdfs/`
 - `npm run audit:deps`: npm audit + registry signature check
