@@ -25,22 +25,33 @@
 <style>
   .badge {
     display: flex;
-    gap: 8px;
+    gap: 6px;
     flex-wrap: wrap;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 600;
   }
   span {
-    padding: 2px 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
     border-radius: 999px;
-    border: 1px solid var(--border);
     color: var(--muted);
+    background: var(--surface-2);
+  }
+  span::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
   }
   .good {
     color: var(--good);
-    border-color: var(--good);
+    background: color-mix(in srgb, var(--good) 12%, transparent);
   }
   .bad {
     color: var(--bad);
-    border-color: var(--bad);
+    background: color-mix(in srgb, var(--bad) 14%, transparent);
   }
 </style>
