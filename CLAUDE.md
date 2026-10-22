@@ -40,10 +40,20 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
 - `npm run dev`: dev server at http://127.0.0.1:5173
 - `npm run check`: Svelte + TypeScript type check
 - `npm test`: unit tests (Vitest)
-- `npm run test:e2e`: browser tests (Playwright, WebKit + Chromium) on the production build
+- `npm run test:e2e`: browser tests (Playwright, WebKit + Chromium) on the production build.
+  Every spec imports `test`/`expect` from `tests/e2e/fixtures.ts` (the network watcher: fails a test
+  on any outside request or CSP violation); `tests/unit/e2e-watch.test.ts` enforces it
 - `npm run verify`: everything above, in order; must pass before any PR
 - `npm run make-test-pdfs`: write generated test files into `test-pdfs/`
 - `npm run audit:deps`: npm audit + registry signature check
+- `npm run security:check`: static security checks (lockfile, `.npmrc`, banned code,
+  egress scan, no PDFs, secrets); runs first in `verify`, with a `dist/` check after the build
+- `npm run security:daily`: the owner's check before daily use (git state, built app, all of the above,
+  `tests/unit/security-headers.test.ts`, audit)
+- `tests/unit/security-headers.test.ts` pins the exact CSP and headers: update it only in a PR
+  the user approved for a header change (rule 2)
+- New dependency approved? Update `scripts/approved-packages.txt` with
+  `node scripts/security-check.mjs --approve-packages` in the same PR.
 
 ## Layout
 

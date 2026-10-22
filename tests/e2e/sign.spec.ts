@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+import type { Page } from '@playwright/test';
 import * as mupdf from 'mupdf';
 import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests } from './helpers';
 import { makePdf } from '../fixtures/make-pdf';

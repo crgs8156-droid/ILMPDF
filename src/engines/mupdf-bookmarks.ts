@@ -57,7 +57,7 @@ function openUnlocked(mupdf: Mupdf, bytes: Uint8Array): MuPDF.PDFDocument {
  * bookmark pointing at a page that doesn't exist loses its target, and files
  * with too many bookmarks are refused. Only the in-memory copy changes.
  */
-function prepareOutline(pdf: MuPDF.PDFDocument): void {
+export function prepareOutline(pdf: MuPDF.PDFDocument): void {
   const root = pdf.getTrailer().get('Root').get('Outlines');
   if (!root.isDictionary()) return;
   const pageCount = pdf.countPages();

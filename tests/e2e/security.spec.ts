@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { addPdf, offOrigin, openTool, trackRequests } from './helpers';
 import { makePdf } from '../fixtures/make-pdf';
 
@@ -42,19 +42,24 @@ test('page is cross-origin isolated and the network is blocked', async ({ page }
   expect(await page.evaluate(() => crossOriginIsolated)).toBe(true);
 });
 
-test('CSP stops fetch to any outside host before it is sent', async ({ page }) => {
-  const requests = trackRequests(page);
-  await page.goto('/');
-  const blocked = await page.evaluate(async () => {
-    try {
-      await fetch('https://example.com/should-never-be-sent', { mode: 'no-cors' });
-      return false;
-    } catch {
-      return true;
-    }
+// This test provokes a CSP block on purpose, so the watcher expects it.
+test.describe('outside fetch', () => {
+  test.use({ expectedCspBlocks: ['https://example.com/should-never-be-sent'] });
+
+  test('CSP stops fetch to any outside host before it is sent', async ({ page }) => {
+    const requests = trackRequests(page);
+    await page.goto('/');
+    const blocked = await page.evaluate(async () => {
+      try {
+        await fetch('https://example.com/should-never-be-sent', { mode: 'no-cors' });
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    expect(blocked).toBe(true);
+    expect(offOrigin(requests)).toEqual([]);
   });
-  expect(blocked).toBe(true);
-  expect(offOrigin(requests)).toEqual([]);
 });
 
 test('a fake PDF is rejected before any engine sees it', async ({ page }) => {

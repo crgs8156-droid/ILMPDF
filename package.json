@@ -17,7 +17,9 @@
     "test:e2e": "playwright test",
     "make-test-pdfs": "node scripts/make-test-pdfs.mjs",
     "audit:deps": "npm audit --audit-level=low && npm audit signatures",
-    "verify": "npm run check && npm run test && npm run build && npm run test:e2e"
+    "security:check": "node scripts/security-check.mjs",
+    "security:daily": "node scripts/security-daily.mjs",
+    "verify": "npm run security:check && npm run check && npm run test && npm run build && node scripts/security-check.mjs --dist-only && npm run test:e2e"
   },
   "dependencies": {
     "mupdf": "1.28.1",
