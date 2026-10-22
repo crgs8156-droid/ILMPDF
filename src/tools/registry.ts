@@ -21,6 +21,7 @@ import RedactTool from './RedactTool.svelte';
 import SanitizeTool from './SanitizeTool.svelte';
 import OcrTool from './OcrTool.svelte';
 import PageToolsTool from './PageToolsTool.svelte';
+import FlattenTool from './FlattenTool.svelte';
 import CompareTool from './CompareTool.svelte';
 
 export type Tool = { id: string; name: string; blurb: string; group: string; component: Component };
@@ -42,6 +43,7 @@ export const TOOLS: Tool[] = [
   { id: 'annotate', name: 'Annotate PDF', blurb: 'Add text boxes, highlights, shapes and comments to pages.', group: 'Edit', component: AnnotateTool },
   { id: 'sign', name: 'Sign PDF', blurb: 'Draw your signature or use an image of it, then place it on the page.', group: 'Edit', component: SignTool },
   { id: 'forms', name: 'Fill forms', blurb: 'Fill in a PDF form, and optionally flatten it so it can no longer be changed.', group: 'Edit', component: FormsTool },
+  { id: 'flatten', name: 'Flatten PDF', blurb: 'Bake form fields and comments into the pages so they can no longer be changed.', group: 'Edit', component: FlattenTool },
   { id: 'protect', name: 'Protect PDF', blurb: 'Add a password (AES-256) so only people who know it can open the PDF.', group: 'Security', component: ProtectTool },
   { id: 'unlock', name: 'Unlock PDF', blurb: 'Remove a password you know, so the PDF opens freely.', group: 'Security', component: UnlockTool },
   { id: 'compress', name: 'Compress PDF', blurb: 'Make a PDF smaller, with a choice of how much image quality to keep.', group: 'Optimize', component: CompressTool },

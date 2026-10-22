@@ -7,6 +7,7 @@ import type { HeaderFooterOptions } from '../engines/header-footer';
 import type { TextDiff } from './word-diff';
 import type { MetadataEdit } from '../engines/metadata-edit';
 import type { CompressLevel, FormField, FormValues, NewAnnotation, PdfInfo, ProtectOptions, RedactBox, RedactOptions, SanitizeReport, TextResult } from '../engines/mupdf-ops';
+import type { FlattenOptions } from '../engines/mupdf-flatten';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -47,6 +48,7 @@ export type MupdfJob =
   | { op: 'findText'; file: Uint8Array; text: string }
   | { op: 'redact'; file: Uint8Array; boxes: RedactBox[]; options: RedactOptions }
   | { op: 'sanitize'; file: Uint8Array }
+  | { op: 'flatten'; file: Uint8Array; opts: FlattenOptions }
   // Compare PDFs: files[0] is the older version, files[1] the newer one.
   | { op: 'compareText'; files: [Uint8Array, Uint8Array] };
 
