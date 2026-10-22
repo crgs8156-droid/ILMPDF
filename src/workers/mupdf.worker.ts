@@ -50,6 +50,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       const { file, report } = ops.sanitize(mupdf, job.file);
       return { files: file ? [file] : [], removed: report };
     }
+    case 'compareText':
+      return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
   }
 }
 
