@@ -289,6 +289,15 @@ async function scriptedFormPdf() {
   return doc.save({ updateFieldAppearances: false });
 }
 
+// A short document with metadata, so a batch has something to remove.
+async function batchLetterPdf() {
+  const doc = await pagesPdf('Batch letter', [LETTER, LETTER]);
+  const pdf = await PDFDocument.load(doc, { updateMetadata: false });
+  pdf.setAuthor('Batch Example');
+  pdf.setTitle('Batch letter');
+  return pdf.save();
+}
+
 // Points the cross-reference table at the wrong place, so a normal reader
 // fails but a repair tool can rebuild it.
 async function repairablePdf() {
@@ -606,6 +615,8 @@ export async function buildTestFiles() {
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     { name: '29-images-mixed.pdf', purpose: 'Three pages with a JPEG photo (used twice), a transparent picture, a tiny icon, a grayscale and a CMYK picture, and a picture inside a placed page: Extract images should save 5 (skipping the icon and the repeat).', bytes: await imagesPdf() },
     { name: '30-no-images.pdf', purpose: 'Two pages of text and shapes with no pictures: Extract images should say none were found.', bytes: await noImagesPdf() },
+    { name: '25-batch-letter.pdf', purpose: 'Two Letter pages with author "Batch Example": use with 02, 08 and 17 in Batch process (for example Remove metadata or Compress).', bytes: await batchLetterPdf() },
+    { name: '26-batch-broken-inside.pdf', purpose: 'Starts like a PDF but the rest is junk: in Batch process it should be listed as failed while the other files are still saved.', bytes: new TextEncoder().encode('%PDF-1.7\n%\xe2\xe3\xcf\xd3\nThis is not a PDF body, just junk text.\n'.repeat(4)) },
     ...(await pageToolsTestFiles()),
     { name: '31-flatten-form-and-comments.pdf', purpose: 'The test form, filled in, plus a highlight, a note, a text box, a rectangle and an ink "signature": Flatten should report 5 form fields and 5 annotations.', bytes: await flattenFormPdf() },
     { name: '32-flatten-with-links.pdf', purpose: 'Two pages with 5 annotations each, a web link and a link to page 2: after Flatten both links must still work.', bytes: await flattenLinksPdf() },
