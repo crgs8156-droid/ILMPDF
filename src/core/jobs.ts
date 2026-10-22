@@ -55,6 +55,8 @@ export type MupdfJob =
   // Compare PDFs: files[0] is the older version, files[1] the newer one.
   | { op: 'compareText'; files: [Uint8Array, Uint8Array] }
   | { op: 'readBookmarks'; file: Uint8Array }
+  // 0-based pages to delete; everything else in the file is kept.
+  | { op: 'removePages'; file: Uint8Array; pages: number[] }
   | { op: 'writeBookmarks'; file: Uint8Array; bookmarks: Bookmark[] };
 
 export type MupdfRequest = { id: string; job: MupdfJob };

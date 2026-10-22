@@ -1,7 +1,7 @@
 // Page tools: resize pages and insert pages. Pure pdf-lib functions over
 // bytes, like pdflib-ops, so they run in the pdf-lib worker and under Node
-// in unit tests. (Removing blank pages reuses organize() from pdflib-ops;
-// finding them is done with PDF.js in engines/blank-pages.ts.)
+// in unit tests. (Removing blank pages is done by removePages() in
+// mupdf-pages.ts; finding them is done with PDF.js in engines/blank-pages.ts.)
 import { PDFArray, PDFDict, PDFName, PDFNumber, type PDFDocument, type PDFPage } from 'pdf-lib';
 import { MAX_PAGES } from '../core/limits';
 import { load, UserFacingError } from './pdflib-ops';

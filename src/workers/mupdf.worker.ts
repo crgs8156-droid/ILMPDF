@@ -8,6 +8,7 @@ import * as ops from '../engines/mupdf-ops';
 import { extractImages } from '../engines/mupdf-images';
 import { flatten } from '../engines/mupdf-flatten';
 import { readBookmarks, writeBookmarks } from '../engines/mupdf-bookmarks';
+import { removePages } from '../engines/mupdf-pages';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -69,6 +70,8 @@ async function run(job: MupdfJob): Promise<JobOutput> {
     }
     case 'writeBookmarks':
       return { files: [writeBookmarks(mupdf, job.file, job.bookmarks)] };
+    case 'removePages':
+      return { files: [removePages(mupdf, job.file, job.pages)] };
   }
 }
 

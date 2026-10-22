@@ -5,7 +5,7 @@
   import Notice from '../lib/Notice.svelte';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { PdfFile } from '../core/files';
-  import { copyBytes, runPdfJob } from '../core/orchestrator';
+  import { copyBytes, runMupdfJob } from '../core/orchestrator';
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
@@ -58,13 +58,12 @@
     job.run(async () => {
       const drop = new Set(found!.filter((f) => f.remove).map((f) => f.index));
       if (drop.size === file.pages) throw new Error('Keep at least one page: untick a page to keep it.');
-      const plan = Array.from({ length: file.pages }, (_, index) => index)
-        .filter((index) => !drop.has(index))
-        .map((index) => ({ index, rotate: 0 as const }));
-      const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan });
+      // Deleted from the original file, so its form, bookmarks, attached files
+      // and details are kept.
+      const out = await runMupdfJob({ op: 'removePages', file: copyBytes(file.bytes), pages: [...drop] });
       const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
       saveBytes(saved!, safeFileName(file.name, '-no-blanks'));
-      return `Removed ${drop.size} blank page${drop.size === 1 ? '' : 's'}; ${plan.length} left.${note}`;
+      return `Removed ${drop.size} blank page${drop.size === 1 ? '' : 's'}; ${file.pages - drop.size} left.${note}`;
     });
   }
 </script>
