@@ -4,6 +4,7 @@
 import type { JobOutput, JobRequest, JobResult, PdfJob } from '../core/jobs';
 import * as ops from '../engines/pdflib-ops';
 import * as pageTools from '../engines/pagetools-ops';
+import { addHeaderFooter } from '../engines/header-footer';
 import { editMetadata } from '../engines/metadata-edit';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
@@ -38,6 +39,8 @@ async function run(job: PdfJob): Promise<JobOutput> {
       return { files: [await pageTools.resizePages(job.file, job.opts)] };
     case 'insertPages':
       return { files: [await pageTools.insertPages(job.file, job.opts, job.files[0])] };
+    case 'headerFooter':
+      return { files: [await addHeaderFooter(job.file, job.opts)] };
   }
 }
 
