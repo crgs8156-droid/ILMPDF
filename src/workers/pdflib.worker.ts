@@ -4,6 +4,7 @@
 import type { JobOutput, JobRequest, JobResult, PdfJob } from '../core/jobs';
 import * as ops from '../engines/pdflib-ops';
 import { addHeaderFooter } from '../engines/header-footer';
+import { editMetadata } from '../engines/metadata-edit';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -27,6 +28,8 @@ async function run(job: PdfJob): Promise<JobOutput> {
       return { meta: await ops.readMetadata(job.file) };
     case 'stripMetadata':
       return { files: [await ops.stripMetadata(job.file)] };
+    case 'editMetadata':
+      return { files: [await editMetadata(job.file, job.edit)] };
     case 'sign':
       return { files: [await ops.addSignature(job.file, job.image, job.placements)] };
     case 'crop':
