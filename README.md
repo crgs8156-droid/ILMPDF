@@ -42,6 +42,22 @@ Open http://127.0.0.1:4173 in Safari. The header should show
 **Network blocked** and **Cross-origin isolated** in green.
 To add it to the Dock: Safari > File > Add to Dock.
 
+## Before daily use
+
+```sh
+cd ~/Developer/ilmpdf
+git checkout main
+git pull
+npm ci
+npm run build
+npm run security:daily
+```
+
+It checks that your copy is exactly the reviewed code on GitHub, that the
+build is fresh, the lockfile and `.npmrc` are intact, the code has no
+network calls or unsafe patterns, and `npm audit` is clean. If it says
+**DAILY CHECK FAILED**, don't open real documents until it is fixed.
+
 ## Development
 
 ```sh
