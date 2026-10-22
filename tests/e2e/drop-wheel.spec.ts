@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { expect, test } from './fixtures';
 import { bytesOf, offOrigin, trackRequests } from './helpers';
 import { makePdf, makeScriptedPdf } from '../fixtures/make-pdf';
 // @ts-expect-error: plain JavaScript script without type declarations
@@ -35,10 +36,21 @@ async function drag(page: Page, items: Drop[], points: [number, number][], end: 
 
 /** The middle of a slice's label, which always lies inside the slice. */
 async function sliceAt(page: Page, id: string): Promise<[number, number]> {
-  // Wait for the pop-in animation, which starts the slices smaller and nearer the centre.
-  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
-  const box = (await page.getByTestId(`wheel-label-${id}`).boundingBox())!;
-  return [box.x + box.width / 2, box.y + box.height / 2];
+  // The slices pop in from smaller and nearer the centre, so wait until the
+  // label stops moving. (WebKit does not list these SVG animations in
+  // document.getAnimations(), so the position itself is watched.)
+  const label = page.getByTestId(`wheel-label-${id}`);
+  const centre = async (): Promise<[number, number]> => {
+    const box = (await label.boundingBox())!;
+    return [box.x + box.width / 2, box.y + box.height / 2];
+  };
+  let last = await centre();
+  for (;;) {
+    await page.waitForTimeout(100);
+    const now = await centre();
+    if (now[0] === last[0] && now[1] === last[1]) return now;
+    last = now;
+  }
 }
 
 /** Opens the wheel by dragging in at (x, y), then drops on the slice. */
