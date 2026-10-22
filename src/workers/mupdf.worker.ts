@@ -7,6 +7,7 @@ import { UserFacingError } from '../engines/pdflib-ops';
 import * as ops from '../engines/mupdf-ops';
 import { extractImages } from '../engines/mupdf-images';
 import { flatten } from '../engines/mupdf-flatten';
+import { readBookmarks, writeBookmarks } from '../engines/mupdf-bookmarks';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
@@ -62,6 +63,12 @@ async function run(job: MupdfJob): Promise<JobOutput> {
     }
     case 'compareText':
       return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
+    case 'readBookmarks': {
+      const { bookmarks, pages } = readBookmarks(mupdf, job.file);
+      return { bookmarks, count: pages };
+    }
+    case 'writeBookmarks':
+      return { files: [writeBookmarks(mupdf, job.file, job.bookmarks)] };
   }
 }
 
