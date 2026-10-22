@@ -10,6 +10,7 @@ import { crc32, deflateSync } from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
+import { pageToolsTestFiles } from './page-tools-test-pdfs.mjs';
 import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
@@ -605,6 +606,7 @@ export async function buildTestFiles() {
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     { name: '29-images-mixed.pdf', purpose: 'Three pages with a JPEG photo (used twice), a transparent picture, a tiny icon, a grayscale and a CMYK picture, and a picture inside a placed page: Extract images should save 5 (skipping the icon and the repeat).', bytes: await imagesPdf() },
     { name: '30-no-images.pdf', purpose: 'Two pages of text and shapes with no pictures: Extract images should say none were found.', bytes: await noImagesPdf() },
+    ...(await pageToolsTestFiles()),
     { name: '31-flatten-form-and-comments.pdf', purpose: 'The test form, filled in, plus a highlight, a note, a text box, a rectangle and an ink "signature": Flatten should report 5 form fields and 5 annotations.', bytes: await flattenFormPdf() },
     { name: '32-flatten-with-links.pdf', purpose: 'Two pages with 5 annotations each, a web link and a link to page 2: after Flatten both links must still work.', bytes: await flattenLinksPdf() },
     {

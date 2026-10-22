@@ -10,7 +10,7 @@ describe('make-test-pdfs', async () => {
   const byName = Object.fromEntries(files.map((f) => [f.name, f.bytes]));
 
   it('builds every file with a purpose', () => {
-    expect(files.length).toBe(35);
+    expect(files.length).toBe(38);
     for (const f of files) {
       expect(f.bytes.length).toBeGreaterThan(0);
       expect(f.purpose.length).toBeGreaterThan(0);
@@ -36,6 +36,9 @@ describe('make-test-pdfs', async () => {
       '22-scanned-text.pdf': 3,
       '29-images-mixed.pdf': 3,
       '30-no-images.pdf': 2,
+      '33-resize-sample.pdf': 4,
+      '34-insert-me.pdf': 2,
+      '35-blank-pages.pdf': 8,
       '31-flatten-form-and-comments.pdf': 1,
       '32-flatten-with-links.pdf': 2,
       '27-headers-mixed-pages.pdf': 4,
