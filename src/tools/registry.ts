@@ -43,6 +43,6 @@ export const TOOLS: Tool[] = [
   { id: 'compress', name: 'Compress PDF', blurb: 'Make a PDF smaller, with a choice of how much image quality to keep.', group: 'Optimize', component: CompressTool },
   { id: 'repair', name: 'Repair PDF', blurb: 'Rebuild a damaged PDF that will not open properly.', group: 'Optimize', component: RepairTool },
   { id: 'redact', name: 'Redact PDF', blurb: 'Black out text, images and drawings for good: they are deleted from the file, not just covered.', group: 'Privacy', component: RedactTool },
-  { id: 'metadata', name: 'Remove metadata', blurb: 'See and remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
+  { id: 'metadata', name: 'Edit metadata', blurb: 'See, change or remove hidden author, title and app details.', group: 'Privacy', component: MetadataTool },
   { id: 'remove-scripts', name: 'Remove scripts', blurb: 'Strip JavaScript, auto-run actions and attached files that other PDF apps might run.', group: 'Privacy', component: SanitizeTool },
 ];

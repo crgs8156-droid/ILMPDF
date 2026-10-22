@@ -2,6 +2,7 @@
 // own copy of each file; every job receives fresh copies that are
 // transferred (moved, not cloned) into the worker.
 import type { CropBox, ImageInput, NumberPosition, PagePlan, PageSize, SignaturePlacement } from '../engines/pdflib-ops';
+import type { MetadataEdit } from '../engines/metadata-edit';
 import type { CompressLevel, FormField, FormValues, NewAnnotation, PdfInfo, ProtectOptions, RedactBox, RedactOptions, SanitizeReport, TextResult } from '../engines/mupdf-ops';
 import type { ImageOptions, ImageReport } from '../engines/mupdf-images';
 
@@ -19,6 +20,7 @@ export type PdfJob =
   | { op: 'watermark'; file: Uint8Array; opts: { text: string; fontSize: number; opacity: number; diagonal: boolean } }
   | { op: 'readMetadata'; file: Uint8Array }
   | { op: 'stripMetadata'; file: Uint8Array }
+  | { op: 'editMetadata'; file: Uint8Array; edit: MetadataEdit }
   | { op: 'sign'; file: Uint8Array; image: ImageInput; placements: SignaturePlacement[] }
   | { op: 'crop'; file: Uint8Array; box: CropBox; pages: number[] };
 

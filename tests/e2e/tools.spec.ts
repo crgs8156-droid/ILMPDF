@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { PDFDocument } from 'pdf-lib';
+import { PDFDocument, PDFName } from 'pdf-lib';
 import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests } from './helpers';
 import { makePdf, TINY_PNG } from '../fixtures/make-pdf';
 
@@ -127,9 +127,34 @@ test('remove metadata shows and strips author and title', async ({ page }) => {
 
   await openTool(page, 'metadata');
   await addPdf(page, 'review.pdf', bytes);
-  await expect(page.getByTestId('meta-list')).toContainText('Jane Example');
+  await expect(page.getByTestId('meta-Author')).toHaveValue('Jane Example');
   const [clean] = await collectDownloads(page, () => page.getByTestId('run').click(), 1);
   const out = await PDFDocument.load(await bytesOf(clean!), { updateMetadata: false });
   expect(out.getAuthor()).toBeUndefined();
   expect(out.getTitle()).toBeUndefined();
+});
+
+test('edit metadata changes the title, clears the author and drops the old XMP copy', async ({ page }) => {
+  const src = await PDFDocument.create({ updateMetadata: false });
+  src.addPage();
+  src.setTitle('Old title');
+  src.setAuthor('Jane Example');
+  const xmp = src.context.stream('<x:xmpmeta xmlns:x="adobe:ns:meta/">Old XMP author</x:xmpmeta>', { Type: 'Metadata', Subtype: 'XML' });
+  src.catalog.set(PDFName.of('Metadata'), src.context.register(xmp));
+  const bytes = await src.save({ useObjectStreams: false });
+
+  await openTool(page, 'metadata');
+  await addPdf(page, 'report.pdf', bytes);
+  await expect(page.getByTestId('meta-Title')).toHaveValue('Old title');
+  await page.getByTestId('meta-Title').fill('Café report 東京');
+  await page.getByTestId('meta-Author').fill('');
+  await page.getByTestId('meta-Keywords').fill('<img src=x onerror=alert(1)>');
+  const [edited] = await collectDownloads(page, () => page.getByTestId('meta-save').click(), 1);
+  expect(edited!.suggestedFilename()).toBe('report-edited.pdf');
+  const outBytes = await bytesOf(edited!);
+  const out = await PDFDocument.load(outBytes, { updateMetadata: false });
+  expect(out.getTitle()).toBe('Café report 東京');
+  expect(out.getAuthor()).toBeUndefined();
+  expect(out.getKeywords()).toBe('<img src=x onerror=alert(1)>');
+  expect(new TextDecoder('latin1').decode(outBytes)).not.toContain('Old XMP author');
 });
