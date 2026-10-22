@@ -9,6 +9,8 @@ import type { MetadataEdit } from '../engines/metadata-edit';
 import type { CompressLevel, FormField, FormValues, NewAnnotation, PdfInfo, ProtectOptions, RedactBox, RedactOptions, SanitizeReport, TextResult } from '../engines/mupdf-ops';
 import type { ImageOptions, ImageReport } from '../engines/mupdf-images';
 import type { FlattenOptions } from '../engines/mupdf-flatten';
+import type { OverlayOptions } from '../engines/recolor';
+import type { RasterOptions } from '../engines/mupdf-recolor';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -30,7 +32,8 @@ export type PdfJob =
   | { op: 'resize'; file: Uint8Array; opts: ResizeOptions }
   // `files` holds the PDF to insert, if any (kept in `files` so it is moved, not copied, into the worker).
   | { op: 'insertPages'; file: Uint8Array; files: Uint8Array[]; opts: InsertOptions }
-  | { op: 'headerFooter'; file: Uint8Array; opts: HeaderFooterOptions };
+  | { op: 'headerFooter'; file: Uint8Array; opts: HeaderFooterOptions }
+  | { op: 'recolorOverlay'; file: Uint8Array; opts: OverlayOptions };
 
 export type JobRequest = { id: string; job: PdfJob };
 
@@ -51,6 +54,7 @@ export type MupdfJob =
   | { op: 'sanitize'; file: Uint8Array }
   | { op: 'extractImages'; file: Uint8Array; opts: ImageOptions }
   | { op: 'flatten'; file: Uint8Array; opts: FlattenOptions }
+  | { op: 'recolorRaster'; file: Uint8Array; opts: RasterOptions }
   // Compare PDFs: files[0] is the older version, files[1] the newer one.
   | { op: 'compareText'; files: [Uint8Array, Uint8Array] };
 

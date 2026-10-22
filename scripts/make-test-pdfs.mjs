@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import * as mupdf from 'mupdf';
 import { pageToolsTestFiles } from './page-tools-test-pdfs.mjs';
+import { recolorTestFiles } from './recolor-test-pdfs.mjs';
 import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 
 const A4 = [595.28, 841.89];
@@ -634,6 +635,7 @@ export async function buildTestFiles() {
     { name: '24-compare-changed.pdf', purpose: 'Compare PDFs, newer version: page 2 has new numbers and an added sentence, the square on page 3 moved (visual only), and page 4 is new.', bytes: await comparePdf(true) },
     { name: '36-metadata-unicode.pdf', purpose: 'Title, author and keywords with accents, Greek and Japanese: Edit metadata should show and keep them correctly.', bytes: await unicodeMetadataPdf() },
     { name: '37-metadata-with-xmp.pdf', purpose: 'Has a hidden XMP copy saying "Stale XMP title" and "Stale XMP Author": after Edit metadata saves, neither should remain.', bytes: await xmpMetadataPdf() },
+    ...(await recolorTestFiles()),
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
