@@ -406,6 +406,36 @@ async function redactionPdf() {
   return doc.save();
 }
 
+// ---- Edit metadata (files 36-37) ----
+
+// Accented and non-Latin details, stored as UTF-16 like real apps do.
+async function unicodeMetadataPdf() {
+  const doc = await PDFDocument.load(await pagesPdf('Unicode metadata', [A4]), { updateMetadata: false });
+  doc.setTitle('Café menu: 東京 / Ελληνικά');
+  doc.setAuthor('Zoë Exämple');
+  doc.setSubject('Made-up details with accents and non-Latin text');
+  doc.setKeywords(['naïve', 'résumé', '日本語']);
+  return doc.save();
+}
+
+// Has an XMP copy whose values disagree with the /Info dictionary, the way a
+// file looks after an app updated one copy but not the other. Edit metadata
+// should leave no trace of the stale XMP values.
+async function xmpMetadataPdf() {
+  const doc = await PDFDocument.load(await pagesPdf('Old title in Info', [A4, A4]), { updateMetadata: false });
+  doc.setAuthor('Info Author');
+  const xmp = `<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?>
+<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+<rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/">
+<dc:title><rdf:Alt><rdf:li xml:lang="x-default">Stale XMP title</rdf:li></rdf:Alt></dc:title>
+<dc:creator><rdf:Seq><rdf:li>Stale XMP Author</rdf:li></rdf:Seq></dc:creator>
+</rdf:Description></rdf:RDF></x:xmpmeta>
+<?xpacket end="w"?>`;
+  const stream = doc.context.stream(xmp, { Type: 'Metadata', Subtype: 'XML' });
+  doc.catalog.set(PDFName.of('Metadata'), doc.context.register(stream));
+  return doc.save({ useObjectStreams: false });
+}
+
 // ---- The full set ----
 
 export async function buildTestFiles() {
@@ -469,6 +499,8 @@ export async function buildTestFiles() {
     { name: '21-form-with-scripts.pdf', purpose: 'The test form plus field scripts, a Send (submit) button and an XFA layer: after Remove scripts the fields should still fill in.', bytes: await scriptedFormPdf() },
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     ...(await pageToolsTestFiles()),
+    { name: '36-metadata-unicode.pdf', purpose: 'Title, author and keywords with accents, Greek and Japanese: Edit metadata should show and keep them correctly.', bytes: await unicodeMetadataPdf() },
+    { name: '37-metadata-with-xmp.pdf', purpose: 'Has a hidden XMP copy saying "Stale XMP title" and "Stale XMP Author": after Edit metadata saves, neither should remain.', bytes: await xmpMetadataPdf() },
     { name: 'image-01-landscape.png', purpose: 'Landscape PNG for images to PDF.', bytes: png(1200, 800, gradient(1200, 800)) },
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
