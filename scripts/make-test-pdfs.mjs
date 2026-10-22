@@ -542,6 +542,8 @@ export async function buildTestFiles() {
     { name: '22-scanned-text.pdf', purpose: 'Scanned pages with no selectable text (page 2 has real text, page 3 is rotated): OCR should make pages 1 and 3 searchable and skip page 2.', bytes: await scannedTextPdf() },
     { name: '25-batch-letter.pdf', purpose: 'Two Letter pages with author "Batch Example": use with 02, 08 and 17 in Batch process (for example Remove metadata or Compress).', bytes: await batchLetterPdf() },
     { name: '26-batch-broken-inside.pdf', purpose: 'Starts like a PDF but the rest is junk: in Batch process it should be listed as failed while the other files are still saved.', bytes: new TextEncoder().encode('%PDF-1.7\n%\xe2\xe3\xcf\xd3\nThis is not a PDF body, just junk text.\n'.repeat(4)) },
+    { name: '31-flatten-form-and-comments.pdf', purpose: 'The test form, filled in, plus a highlight, a note, a text box, a rectangle and an ink "signature": Flatten should report 5 form fields and 5 annotations.', bytes: await flattenFormPdf() },
+    { name: '32-flatten-with-links.pdf', purpose: 'Two pages with 5 annotations each, a web link and a link to page 2: after Flatten both links must still work.', bytes: await flattenLinksPdf() },
     {
       name: '27-headers-mixed-pages.pdf',
       purpose: 'Letter, landscape A4, A5 turned 90 degrees and Letter turned 270 degrees: Headers & footers should sit at the top and bottom of every page as shown, reading upright.',
@@ -560,6 +562,78 @@ export async function buildTestFiles() {
     { name: 'image-02-portrait.png', purpose: 'Portrait PNG for images to PDF.', bytes: png(800, 1200, stripes) },
     { name: 'image-03-transparent.png', purpose: 'PNG with a transparent background.', bytes: png(600, 600, transparentCircle(600), { alpha: true }) },
   ];
+}
+
+// ---- Phase 4 Flatten files: real annotations, added with MuPDF ----
+
+// Adds a highlight, a sticky note, a text box, a rectangle and a hand-drawn
+// "signature" (ink) to the given page. Coordinates are MuPDF's: points from
+// the top-left corner of the page.
+function addMarkups(doc, index, top) {
+  const page = doc.loadPage(index);
+  const highlight = page.createAnnotation('Highlight');
+  highlight.setColor([1, 0.9, 0]);
+  highlight.setQuadPoints([[45, top, 200, top, 45, top + 30, 200, top + 30]]);
+  highlight.update();
+  const note = page.createAnnotation('Text');
+  note.setRect([500, top, 520, top + 20]);
+  note.setContents('A made-up comment for the Flatten test.');
+  note.update();
+  const box = page.createAnnotation('FreeText');
+  box.setRect([300, 700, 545, 730]);
+  box.setContents('APPROVED (test stamp)');
+  box.setDefaultAppearance('Helv', 14, [0.8, 0, 0]);
+  box.setBorderWidth(0);
+  box.update();
+  box.getObject().delete('CL');
+  box.update();
+  const square = page.createAnnotation('Square');
+  square.setRect([290, 690, 555, 740]);
+  square.setColor([0.8, 0, 0]);
+  square.setBorderWidth(2);
+  square.update();
+  const ink = page.createAnnotation('Ink');
+  ink.setColor([0, 0, 0.6]);
+  ink.setBorderWidth(2);
+  ink.setInkList([[[60, 760], [80, 740], [100, 770], [120, 745], [140, 765], [170, 750]]]);
+  ink.update();
+  page.destroy();
+}
+
+function withMarkups(source, pages) {
+  const doc = mupdf.Document.openDocument(source, 'application/pdf').asPDF();
+  try {
+    for (const [index, top] of pages) addMarkups(doc, index, top);
+    return new Uint8Array(doc.saveToBuffer({ garbage: 'compact' }).asUint8Array());
+  } finally {
+    doc.destroy();
+  }
+}
+
+// The test form, filled in, with comments on top: 5 fields and 5 annotations.
+async function flattenFormPdf() {
+  const doc = await PDFDocument.load(await formPdf(), { updateMetadata: false });
+  const form = doc.getForm();
+  form.getTextField('full_name').setText('Jane Example');
+  form.getTextField('email').setText('jane@example.invalid');
+  form.getCheckBox('subscribe').check();
+  form.getDropdown('plan').select('Pro');
+  form.getRadioGroup('size').select('Large');
+  return withMarkups(await doc.save(), [[0, 50]]);
+}
+
+// Two pages with a web link and a link to page 2 that must survive
+// flattening: 10 annotations (5 per page), no form.
+async function flattenLinksPdf() {
+  const doc = await newDoc('Flatten with links');
+  const font = await doc.embedFont(StandardFonts.HelveticaBold);
+  for (let n = 1; n <= 2; n++) drawPage(doc.addPage(A4), font, { n, total: 2, label: 'Flatten with links' });
+  const first = doc.getPage(0);
+  first.drawText('Web link (example.com)', { x: 50, y: 150, size: 14, font, color: rgb(0, 0, 0.8) });
+  addLink(doc, first, [45, 145, 260, 165], doc.context.obj({ S: 'URI', URI: PDFString.of('https://example.com/') }));
+  first.drawText('Go to page 2', { x: 50, y: 120, size: 14, font, color: rgb(0, 0, 0.8) });
+  addLink(doc, first, [45, 115, 160, 135], doc.context.obj({ S: 'GoTo', D: [doc.getPage(1).ref, PDFName.of('Fit')] }));
+  return withMarkups(await doc.save(), [[0, 10], [1, 10]]);
 }
 
 async function main() {
