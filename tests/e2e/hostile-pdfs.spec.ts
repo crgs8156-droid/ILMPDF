@@ -20,6 +20,10 @@ const PICK = [
 // Organize: pdf-lib + PDF.js thumbnails. PDF to images: PDF.js rendering.
 // Compress: MuPDF.
 const TOOLS = ['organize', 'pdf-to-images', 'compress'] as const;
+// The app stops any job after JOB_TIMEOUT_MS (src/core/limits.ts, 5 minutes)
+// and shows an error, so every run must give a result within that, plus a
+// little time to show it.
+const RESULT_LIMIT_MS = 300_000 + 30_000;
 
 let files: HostileFile[];
 test.beforeAll(async () => {
@@ -43,20 +47,23 @@ async function tryTool(page: Page, tool: (typeof TOOLS)[number], file: HostileFi
   const run = page.getByTestId('run');
   if (tool === 'pdf-to-images') await page.getByTestId('img-pages').fill('1');
   if (!(await run.isEnabled())) return;
-  const download = page.waitForEvent('download', { timeout: 90_000 }).then(() => 'download');
-  const notice = expect(error.or(page.getByTestId('notice-ok')).first())
-    .toBeVisible({ timeout: 90_000 })
-    .then(() => 'notice');
+  // Either result counts; each resolves to null if it never comes.
+  const download = page.waitForEvent('download', { timeout: RESULT_LIMIT_MS }).then(() => 'download', () => null);
+  const notice = error.or(page.getByTestId('notice-ok')).first()
+    .waitFor({ timeout: RESULT_LIMIT_MS })
+    .then(() => 'notice', () => null);
+  const started = Date.now();
   await run.click();
-  const outcome = await Promise.race([download, notice]);
-  expect(outcome, `${tool}: ${file.why}`).toBeTruthy();
-  download.catch(() => undefined);
-  notice.catch(() => undefined);
+  const outcome = (await Promise.race([download, notice])) ?? (await download) ?? (await notice);
+  const seconds = Math.round((Date.now() - started) / 1000);
+  // Shown in the test output, so a slow browser/file pair is easy to spot.
+  if (seconds >= 30) console.log(`slow: ${tool} took ${seconds} s on ${file.name}`);
+  expect(outcome, `${tool}: no result for ${file.name} (${file.why}) after ${seconds} s`).not.toBeNull();
 }
 
 for (const tool of TOOLS) {
   test(`${tool}: hostile files fail cleanly and the next job still works`, async ({ page }) => {
-    test.setTimeout(10 * 60_000);
+    test.setTimeout(20 * 60_000);
     const dialogs: string[] = [];
     page.on('dialog', (d) => {
       dialogs.push(d.message());
