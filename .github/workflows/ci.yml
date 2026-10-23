@@ -12,7 +12,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Normal runs take 6-9 minutes. The extra room covers days when GitHub's
+    # Ubuntu package mirror is slow (on 2026-10-22 it stalled two runs at 20).
+    timeout-minutes: 45
     steps:
       # Actions are pinned to full commit SHAs, not movable tags.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -27,6 +29,13 @@ jobs:
       - name: Dependency audit and registry signatures
         run: npm run audit:deps
       - name: Install test browsers (WebKit = Safari's engine)
-        run: npx playwright install --with-deps webkit chromium
+        # Tries twice, because the Ubuntu package mirror sometimes stalls.
+        timeout-minutes: 30
+        run: |
+          for attempt in 1 2; do
+            npx playwright install --with-deps webkit chromium && exit 0
+            echo "Browser install failed (attempt $attempt), retrying..."
+          done
+          exit 1
       - name: Type check, unit tests, build, browser tests
         run: npm run verify
