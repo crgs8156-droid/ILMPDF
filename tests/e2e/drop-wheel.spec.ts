@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { bytesOf, offOrigin, trackRequests } from './helpers';
 import { makePdf, makeScriptedPdf } from '../fixtures/make-pdf';
+import { QUICK_SLICES, sliceCentre } from '../../src/core/wheel';
 // @ts-expect-error: plain JavaScript script without type declarations
 import { buildTestFiles } from '../../scripts/make-test-pdfs.mjs';
 
@@ -34,23 +35,20 @@ async function drag(page: Page, items: Drop[], points: [number, number][], end: 
   );
 }
 
-/** The middle of a slice's label, which always lies inside the slice. */
+/**
+ * The middle of a slice, worked out from the wheel's own geometry. The
+ * slices pop in with a CSS animation, and WebKit does not always advance it
+ * in a headless test browser, so the labels' on-screen positions cannot be
+ * trusted. The <svg> box itself is never animated: its centre is the wheel's
+ * centre and its width is 2 * (outer radius + 16), as DropWheel draws it.
+ */
 async function sliceAt(page: Page, id: string): Promise<[number, number]> {
-  // The slices pop in from smaller and nearer the centre, so wait until the
-  // label stops moving. (WebKit does not list these SVG animations in
-  // document.getAnimations(), so the position itself is watched.)
-  const label = page.getByTestId(`wheel-label-${id}`);
-  const centre = async (): Promise<[number, number]> => {
-    const box = (await label.boundingBox())!;
-    return [box.x + box.width / 2, box.y + box.height / 2];
-  };
-  let last = await centre();
-  for (;;) {
-    await page.waitForTimeout(100);
-    const now = await centre();
-    if (now[0] === last[0] && now[1] === last[1]) return now;
-    last = now;
-  }
+  const box = (await page.getByTestId('wheel').boundingBox())!;
+  const outer = box.width / 2 - 16;
+  const inner = Math.round(outer * 0.38);
+  const index = QUICK_SLICES.findIndex((s) => s.id === id);
+  const c = sliceCentre(index, QUICK_SLICES.length, (outer + inner) / 2);
+  return [box.x + box.width / 2 + c.x, box.y + box.height / 2 + c.y];
 }
 
 /** Opens the wheel by dragging in at (x, y), then drops on the slice. */
