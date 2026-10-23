@@ -9,3 +9,8 @@ export const MAX_INK_POINTS = 2_000; // per freehand stroke, so a drawing can't 
 // OCR reads one page at a time, so its time limit is per page, not per job.
 export const OCR_PAGE_TIMEOUT_MS = 120_000;
 export const MAX_IMAGES = 500; // per Extract images job
+// Largest picture (width x height) PDF.js will draw in a preview or page
+// image; bigger ones are left out. A hostile PDF can claim a picture of
+// 100,000 x 100,000 pixels, which froze Safari's page. 100 megapixels is far
+// above any real scan (an A3 page at 600 dpi is about 70 megapixels).
+export const MAX_RENDER_IMAGE_PIXELS = 100_000_000;
