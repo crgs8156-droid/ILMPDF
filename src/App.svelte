@@ -258,7 +258,6 @@
     max-width: 62ch;
     color: var(--muted);
   }
-claude/project-thread-do13k5
   .section-h {
     display: flex;
     align-items: baseline;
@@ -275,11 +274,10 @@ claude/project-thread-do13k5
     font-size: 13px;
     color: var(--accent);
     text-decoration: none;
-=======
+  }
   .hero .tip {
     margin-top: 4px;
     font-size: 13px;
-main
   }
   .chips {
     display: flex;
