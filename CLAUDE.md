@@ -43,7 +43,10 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
 - `npm run test:e2e`: browser tests (Playwright, WebKit + Chromium) on the production build.
   Every spec imports `test`/`expect` from `tests/e2e/fixtures.ts` (the network watcher: fails a test
   on any outside request or CSP violation); `tests/unit/e2e-watch.test.ts` enforces it
-- `npm run verify`: everything above, in order; must pass before any PR
+- `npm run verify`: everything above, in order; must pass before any PR.
+  Before asking to merge, a PR needs green CI **or** a passing `npm run verify` on the user's Mac
+  (`docs/2026-10-23-checking-a-pr-on-your-mac.md`). CI skips drafts and docs-only changes:
+  open PRs as drafts while fixing, mark them ready when done
 - `npm run make-test-pdfs`: write generated test files into `test-pdfs/`
 - `npm run audit:deps`: npm audit + registry signature check
 - `npm run security:check`: static security checks (lockfile, `.npmrc`, banned code,
