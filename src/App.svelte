@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import SecurityBadge from './lib/SecurityBadge.svelte';
+  import DropWheel from './lib/DropWheel.svelte';
   import Sidebar from './lib/Sidebar.svelte';
   import ThemeSwitch from './lib/ThemeSwitch.svelte';
   import Icon from './lib/Icon.svelte';
@@ -140,6 +141,7 @@
         <section class="hero">
           <h1>Private PDF tools</h1>
           <p>{TOOLS.length} tools that work entirely on this Mac. Files are never uploaded, and the network is switched off for this page.</p>
+          <p class="tip" data-testid="wheel-tip">Tip: drag a PDF onto this page and drop it on a tool in the wheel that appears.</p>
         </section>
         {#if shelf.recent.length > 0}
           <div class="section-h">
@@ -174,6 +176,9 @@
     <footer class="foot">ILMPDF runs offline: nothing you open here is uploaded or kept.</footer>
   </div>
 </div>
+
+<!-- Only on the home page: each tool has its own drop area. -->
+<DropWheel enabled={nav.route.kind === 'home'} />
 
 <style>
   .shell {
@@ -253,6 +258,7 @@
     max-width: 62ch;
     color: var(--muted);
   }
+claude/project-thread-do13k5
   .section-h {
     display: flex;
     align-items: baseline;
@@ -269,6 +275,11 @@
     font-size: 13px;
     color: var(--accent);
     text-decoration: none;
+=======
+  .hero .tip {
+    margin-top: 4px;
+    font-size: 13px;
+main
   }
   .chips {
     display: flex;
