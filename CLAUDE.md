@@ -52,6 +52,10 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
   `tests/unit/security-headers.test.ts`, audit)
 - `tests/unit/security-headers.test.ts` pins the exact CSP and headers: update it only in a PR
   the user approved for a header change (rule 2)
+- `npm run fuzz`: the long hostile-PDF fuzz round (20,000 corrupted files, a few minutes; weekly and at every phase gate).
+  `npm run test:fuzz` (part of `verify`) runs the attack files in `tests/fixtures/hostile-pdfs.ts`
+  plus a short random round, after the unit tests.
+  Replay a round with `ILMPDF_FUZZ_SEED=<seed>`
 - New dependency approved? Update `scripts/approved-packages.txt` with
   `node scripts/security-check.mjs --approve-packages` in the same PR.
 

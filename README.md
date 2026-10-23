@@ -59,6 +59,12 @@ network calls or unsafe patterns, the security headers and 127.0.0.1-only
 server settings are the approved ones, and `npm audit` is clean. If it says
 **DAILY CHECK FAILED**, don't open real documents until it is fixed.
 
+Once a week, also run the long hostile-PDF test (20,000 corrupted files, a few minutes):
+
+```sh
+npm run fuzz
+```
+
 ## Development
 
 ```sh
