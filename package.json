@@ -14,12 +14,14 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "vitest run",
+    "test:fuzz": "vitest run --config tests/fuzz/vitest.config.ts",
     "test:e2e": "playwright test",
     "make-test-pdfs": "node scripts/make-test-pdfs.mjs",
     "audit:deps": "npm audit --audit-level=low && npm audit signatures",
     "security:check": "node scripts/security-check.mjs",
     "security:daily": "node scripts/security-daily.mjs",
-    "verify": "npm run security:check && npm run check && npm run test && npm run build && node scripts/security-check.mjs --dist-only && npm run test:e2e"
+    "fuzz": "ILMPDF_FUZZ_CASES=20000 vitest run --config tests/fuzz/vitest.config.ts",
+    "verify": "npm run security:check && npm run check && npm run test && npm run test:fuzz && npm run build && node scripts/security-check.mjs --dist-only && npm run test:e2e"
   },
   "dependencies": {
     "mupdf": "1.28.1",
