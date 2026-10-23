@@ -1,6 +1,7 @@
 import { checkFileMeta, hasPdfHeader } from './validate';
 import { MAX_FILES } from './limits';
 import { copyBytes, runPdfJob } from './orchestrator';
+import { shelf } from './shelf.svelte';
 
 export type PdfFile = { key: string; name: string; size: number; bytes: Uint8Array; pages: number };
 export type Rejected = { name: string; reason: string };
@@ -9,6 +10,7 @@ export type Rejected = { name: string; reason: string };
 export async function loadPdfs(files: File[], room = MAX_FILES): Promise<{ ok: PdfFile[]; rejected: Rejected[] }> {
   const ok: PdfFile[] = [];
   const rejected: Rejected[] = [];
+  const tool = shelf.tool;
   for (const file of files.slice(0, Math.max(0, room))) {
     const meta = checkFileMeta(file.name, file.size);
     if (!meta.ok) {
@@ -22,7 +24,10 @@ export async function loadPdfs(files: File[], room = MAX_FILES): Promise<{ ok: P
     }
     try {
       const { count } = await runPdfJob({ op: 'pageCount', file: copyBytes(bytes) });
-      ok.push({ key: crypto.randomUUID(), name: file.name, size: file.size, bytes, pages: count ?? 0 });
+      const pdf = { key: crypto.randomUUID(), name: file.name, size: file.size, bytes, pages: count ?? 0 };
+      ok.push(pdf);
+      // Also listed under Your files and Recent files (memory only, this tab).
+      shelf.add(pdf, tool);
     } catch (err) {
       rejected.push({ name: file.name, reason: err instanceof Error ? err.message : 'Could not read' });
     }

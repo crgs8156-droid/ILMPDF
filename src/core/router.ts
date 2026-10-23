@@ -3,13 +3,20 @@
 // network, but Safari still records them, so its Back and Forward buttons,
 // ⌘[ and swipe-back all work. Plain functions only, so they can be unit-tested.
 //
-//   #/            the home page
+//   #/            the home page (dashboard)
+//   #/recent      Recent files, #/files Your files, #/saved Saved files
 //   #/sign        a tool, waiting for a file
 //   #/sign/file   the same tool with a PDF loaded (the file itself is never
 //                 in the address; it lives only in memory)
 
+/** The app's own pages besides the dashboard and the tools. */
+export const PAGES = { recent: 'Recent files', files: 'Your files', saved: 'Saved files' } as const;
+export type PageId = keyof typeof PAGES;
+const isPage = (id: string): id is PageId => Object.hasOwn(PAGES, id);
+
 export type Route =
   | { kind: 'home' }
+  | { kind: 'page'; id: PageId }
   | { kind: 'tool'; id: string; file: boolean }
   | { kind: 'missing'; path: string };
 
@@ -19,6 +26,7 @@ const APP = 'ILMPDF';
 export function parseHash(hash: string, ids: readonly string[]): Route {
   const path = hash.replace(/^#\/?/, '').replace(/\/+$/, '');
   if (path === '') return { kind: 'home' };
+  if (isPage(path)) return { kind: 'page', id: path };
   const [id = '', step, ...rest] = path.split('/');
   if (!ids.includes(id) || rest.length > 0 || (step !== undefined && step !== 'file')) {
     return { kind: 'missing', path };
@@ -28,11 +36,12 @@ export function parseHash(hash: string, ids: readonly string[]): Route {
 
 export function toHash(route: Route): string {
   if (route.kind === 'tool') return `#/${route.id}${route.file ? '/file' : ''}`;
+  if (route.kind === 'page') return `#/${route.id}`;
   if (route.kind === 'missing') return `#/${route.path}`;
   return '#/';
 }
 
-/** The route one step "up": a loaded file goes back to the picker, a tool goes home. */
+/** The route one step "up": a loaded file goes back to the picker; anything else goes home. */
 export function parentOf(route: Route): Route {
   if (route.kind === 'tool' && route.file) return { kind: 'tool', id: route.id, file: false };
   return { kind: 'home' };
@@ -41,6 +50,7 @@ export function parentOf(route: Route): Route {
 /** The browser tab title, so Safari's history and tab list can tell tools apart. */
 export function titleFor(route: Route, toolName?: string): string {
   if (route.kind === 'tool' && toolName) return `${toolName} · ${APP}`;
+  if (route.kind === 'page') return `${PAGES[route.id]} · ${APP}`;
   if (route.kind === 'missing') return `Not found · ${APP}`;
   return APP;
 }
