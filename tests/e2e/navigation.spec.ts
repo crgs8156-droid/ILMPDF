@@ -54,10 +54,10 @@ test('the Back button and "Choose another file" use the same steps', async ({ pa
   await page.goto('/');
   await page.getByTestId('open-sign').click();
   await addPdf(page, 'a.pdf', makePdf(1));
-  await expect(page.getByTestId('back')).toHaveText('‹ Back');
+  await expect(page.getByTestId('back')).toHaveText('Back');
   await page.getByTestId('loaded-file').getByRole('button', { name: 'Choose another file' }).click();
   await expect(page.getByTestId('loaded-file')).toHaveCount(0);
-  await expect(page.getByTestId('back')).toContainText('All tools');
+  await expect(page.getByTestId('back')).toHaveText('Dashboard');
   await page.getByTestId('back').click();
   await expect(page.getByTestId('open-sign')).toBeVisible();
   // Both steps used the browser's own Back, so Forward returns to the tool.

@@ -7,6 +7,7 @@
 </script>
 
 <div class="head" data-testid="loaded-file">
+  <span class="thumb" aria-hidden="true">PDF</span>
   <div class="meta">
     <span class="name">{file.name}</span>
     <span class="detail">{file.pages} page{file.pages === 1 ? '' : 's'} · {formatBytes(file.size)}</span>
@@ -17,16 +18,29 @@
 <style>
   .head {
     display: flex;
-    justify-content: space-between;
     align-items: center;
     gap: 12px;
-    padding: 12px 16px;
+    padding: 12px 14px;
     background: var(--surface);
     border: 1px solid var(--border);
-    border-radius: 10px;
+    border-radius: 12px;
+  }
+  .thumb {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 36px;
+    height: 46px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--bad);
   }
   .meta {
     display: grid;
+    flex: 1;
     min-width: 0;
   }
   .name {
