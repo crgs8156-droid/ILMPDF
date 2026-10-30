@@ -63,6 +63,8 @@ test('results are listed under Saved files and can be saved again', async ({ pag
 test('Clear all files asks first, then forgets everything', async ({ page }) => {
   await page.goto('/#/compress');
   await addPdf(page, 'a.pdf', makePdf(1));
+  // Wait for the PDF to finish loading, so it is on the shelf before we leave.
+  await expect(page.getByTestId('loaded-file')).toBeVisible();
   await page.getByTestId('side-files').click();
   await expect(page.getByTestId('files-list')).toBeVisible();
   await page.getByTestId('clear-all').click();
