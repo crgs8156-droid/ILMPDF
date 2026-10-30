@@ -2,7 +2,8 @@
 //   npm run security:daily
 // 1. Your copy is the reviewed code: on main, no local edits, same commit
 //    as GitHub (asks GitHub for the latest main; nothing else is sent).
-// 2. The static security checks (lockfile, .npmrc, code scans, built app).
+// 2. The static security checks (lockfile, .npmrc, code scans, built app,
+//    and every file ever committed, because the repo is public).
 // 3. The CSP, security headers and 127.0.0.1 binding are the approved ones.
 // 4. npm audit and registry signatures for known vulnerabilities.
 // If anything fails, don't open real documents until it is fixed.
@@ -48,7 +49,7 @@ step('The built app is up to date', () => {
 });
 
 step('Static security checks', () => {
-  const r = spawnSync('node', [path.join(ROOT, 'scripts', 'security-check.mjs'), '--dist'], { cwd: ROOT, stdio: 'inherit' });
+  const r = spawnSync('node', [path.join(ROOT, 'scripts', 'security-check.mjs'), '--dist', '--history'], { cwd: ROOT, stdio: 'inherit' });
   return r.status === 0 ? [] : ['see the FAIL lines above'];
 });
 
