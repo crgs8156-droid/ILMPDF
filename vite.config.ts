@@ -91,5 +91,9 @@ export default defineConfig({
   test: {
     include: ['tests/unit/**/*.test.ts'],
     environment: 'node',
+    // The first MuPDF test in a file also pays for loading MuPDF's wasm and
+    // building the shared test PDFs. With files running side by side on a
+    // 2-core CI runner that alone takes 5-6 s, over Vitest's 5 s default.
+    testTimeout: 20_000,
   },
 });
