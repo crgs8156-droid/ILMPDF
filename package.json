@@ -17,7 +17,7 @@
     "test:fuzz": "vitest run --config tests/fuzz/vitest.config.ts",
     "test:e2e": "playwright test",
     "make-test-pdfs": "node scripts/make-test-pdfs.mjs",
-    "audit:deps": "npm audit --audit-level=low && npm audit signatures",
+    "audit:deps": "node scripts/audit-check.mjs && npm audit signatures",
     "security:check": "node scripts/security-check.mjs",
     "security:daily": "node scripts/security-daily.mjs",
     "fuzz": "ILMPDF_FUZZ_CASES=20000 vitest run --config tests/fuzz/vitest.config.ts",
