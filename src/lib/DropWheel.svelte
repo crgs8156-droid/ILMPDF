@@ -1,17 +1,32 @@
 <script lang="ts">
-  // The Drag Wheel: when a file is dragged onto the home page, a ring of
-  // one-step actions appears under the cursor. Dropping on a slice runs that
-  // action on the PDF and saves the result as a new download; dropping
-  // anywhere else does nothing. The file is read only after the drop.
+  // The Drag Wheel: when files are dragged onto the home page, a ring of
+  // one-step actions appears under the cursor. Which ring depends on what is
+  // dragged: one PDF, several PDFs, or images. Dropping on a slice runs that
+  // action and saves the result as a new download; dropping anywhere else
+  // does nothing. The files are read only after the drop.
   import Notice from './Notice.svelte';
-  import { loadPdfs } from '../core/files';
-  import { BUSY_TEXT, runQuick } from '../core/quick-actions';
-  import { QUICK_SLICES, clampCentre, hitTest, sliceCentre, slicePath, wheelSize, type Hit } from '../core/wheel';
+  import { loadImages, loadPdfs, type Rejected } from '../core/files';
+  import { BUSY_TEXT, runImages, runMany, runQuick } from '../core/quick-actions';
+  import {
+    RINGS,
+    SAME_FOR_MANY,
+    clampCentre,
+    hitTest,
+    pickRing,
+    ringForFiles,
+    sliceCentre,
+    slicePath,
+    wheelSize,
+    type Hit,
+    type ImagesId,
+    type ManyId,
+    type QuickId,
+    type RingId,
+  } from '../core/wheel';
 
   type Props = { enabled: boolean };
   let { enabled }: Props = $props();
 
-  const slices = QUICK_SLICES;
   /** How far the hovered slice slides outwards, in pixels. */
   const LIFT = 7;
 
@@ -21,7 +36,9 @@
   let hot = $state<Hit>(null);
   let centre = $state({ x: 0, y: 0 });
   let size = $state({ outer: 150, inner: 57 });
-  let many = $state(false);
+  let ring = $state<RingId>('one');
+  /** How many files are being dragged (0 when the browser does not say). */
+  let count = $state(0);
   let done = $state<string[]>([]);
   let errors = $state<string[]>([]);
   let wheel = $state<SVGSVGElement>();
@@ -30,18 +47,25 @@
   // the wheel closes only when the count of entered elements is back to 0.
   let depth = 0;
 
+  const slices = $derived(RINGS[ring]);
   const shown = $derived(open || running !== null);
   const box = $derived(2 * (size.outer + 16));
   const lit = $derived(running ?? hot);
   const hint = $derived(
     running !== null
       ? busyText
-      : many
-        ? 'The wheel takes one PDF at a time for now'
-        : typeof hot === 'number'
-          ? slices[hot]!.hint
-          : 'Drop on a tool · drop anywhere else to cancel',
+      : typeof hot === 'number'
+        ? slices[hot]!.hint
+        : `${ring === 'one' ? '' : `${what(ring, count)} · `}Drop on a tool · drop anywhere else to cancel`,
   );
+
+  /** "3 PDFs", "1 image": what the wheel thinks is being dragged. */
+  function what(r: RingId, n: number): string {
+    if (r === 'images') return n === 1 ? '1 image' : n > 1 ? `${n} images` : 'images';
+    if (r === 'many') return n > 1 ? `${n} PDFs` : 'several PDFs';
+    return 'one PDF';
+  }
+  const hubText = $derived(running !== null ? 'Working' : ring === 'one' ? 'ILMPDF' : what(ring, count));
 
   const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
   const where = (e: DragEvent): Hit => hitTest(e.clientX - centre.x, e.clientY - centre.y, slices.length, size.outer, size.inner);
@@ -49,8 +73,11 @@
   function show(e: DragEvent) {
     size = wheelSize(innerWidth, innerHeight);
     centre = clampCentre(e.clientX, e.clientY, innerWidth, innerHeight, size.outer + 16);
-    // Browsers reveal how many items are being dragged, but not their names, until the drop.
-    many = (e.dataTransfer?.items?.length ?? 0) > 1;
+    // Browsers reveal how many items are being dragged and usually their
+    // types, but not their names, until the drop.
+    const items = Array.from(e.dataTransfer?.items ?? []).map((i) => ({ kind: i.kind, type: i.type }));
+    ring = pickRing(items);
+    count = items.filter((i) => i.kind === 'file').length;
     hot = null;
     done = [];
     errors = [];
@@ -131,23 +158,54 @@
 
   async function run(index: number, files: File[]) {
     const slice = slices[index]!;
-    if (files.length !== 1) {
-      errors = ['The wheel takes one PDF at a time for now. Drop a single file, or use Merge or Batch process for several.'];
+    const actual = ringForFiles(files);
+    let id = slice.id;
+    if (actual === null) {
+      errors = ['Drop only PDFs or only images, not both at once.'];
       return;
     }
+    if (actual !== ring) {
+      // The browser hid the file count during the drag: several PDFs landed
+      // on the one-PDF ring. Most of its slices have a several-PDFs twin.
+      const twin = ring === 'one' && actual === 'many' ? SAME_FOR_MANY[id as QuickId] : undefined;
+      if (!twin) {
+        errors = [`That was ${what(actual, files.length)}, but the wheel showed the tools for ${what(ring, count)}. Drag them in again to see the right tools.`];
+        return;
+      }
+      id = twin;
+    }
     running = index;
-    busyText = BUSY_TEXT[slice.id];
+    busyText = BUSY_TEXT[id];
+    const step = (text: string) => (busyText = `${BUSY_TEXT[id]} · ${text}`);
     try {
-      const { ok, rejected } = await loadPdfs(files);
-      const file = ok[0];
-      if (!file) throw new Error(rejected.map((r) => `${r.name}: ${r.reason}`).join(' ') || 'Could not read this file.');
-      done = [await runQuick(slice.id, file, (step) => (busyText = `${BUSY_TEXT[slice.id]} · ${step}`))];
+      done = [await perform(actual, id, files, step)];
     } catch (err) {
       errors = [err instanceof Error ? err.message : 'Something went wrong.'];
     } finally {
       running = null;
       busyText = '';
     }
+  }
+
+  const reasons = (rejected: Rejected[]) => rejected.map((r) => `${r.name}: ${r.reason}`).join(' ');
+
+  /** Reads the dropped files, checks them, and runs the slice's action. */
+  async function perform(kind: RingId, id: string, files: File[], step: (text: string) => void): Promise<string> {
+    if (kind === 'images') {
+      const { ok, rejected } = await loadImages(files);
+      if (ok.length === 0) throw new Error(reasons(rejected) || 'Could not read these images.');
+      const note = await runImages(id as ImagesId, ok, step);
+      return rejected.length ? `${note} Left out: ${reasons(rejected)}` : note;
+    }
+    const { ok, rejected } = await loadPdfs(files);
+    if (kind === 'one') {
+      if (!ok[0]) throw new Error(reasons(rejected) || 'Could not read this file.');
+      return runQuick(id as QuickId, ok[0], step);
+    }
+    if (ok.length === 0) throw new Error(reasons(rejected) || 'Could not read these files.');
+    if (id === 'merge' && ok.length < 2) throw new Error(`Merge needs at least two PDFs. ${reasons(rejected)}`.trim());
+    const note = await runMany(id as ManyId, ok, step);
+    return rejected.length ? `${note} Left out: ${reasons(rejected)}` : note;
   }
 
   function dismiss() {
@@ -185,7 +243,7 @@
       {#if running !== null}
         <circle class="spin" r={size.inner - 4} pathLength="100" />
       {/if}
-      <text class="hub-text" y="4" text-anchor="middle">{running !== null ? 'Working' : many ? 'One PDF' : 'ILMPDF'}</text>
+      <text class="hub-text" y="4" text-anchor="middle">{hubText}</text>
     </svg>
     <p class="hint" data-testid="wheel-hint">{hint}</p>
   </div>
