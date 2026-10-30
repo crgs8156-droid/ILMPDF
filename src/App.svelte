@@ -8,7 +8,10 @@
   import { TOOL_ICONS, UI_ICONS, groupClass } from './lib/icons';
   import { TOOLS } from './tools/registry';
   import { nav } from './core/nav.svelte';
-  import { titleFor } from './core/router';
+  import { PAGES, titleFor } from './core/router';
+  import { shelf } from './core/shelf.svelte';
+  import FilesPage from './pages/FilesPage.svelte';
+  import RecentList from './pages/RecentList.svelte';
 
   // Where we are lives in the address hash (see core/router.ts), so Safari's
   // Back and Forward buttons, ⌘[ and swipe-back all work.
@@ -38,7 +41,8 @@
   // When the page changes: a tool opens at the top with its heading focused
   // (so VoiceOver reads it); the dashboard returns to where you left it,
   // with the tool you just used focused.
-  const pageKey = $derived(current ? `tool:${current.id}` : nav.route.kind);
+  const page = $derived(nav.route.kind === 'page' ? nav.route.id : null);
+  const pageKey = $derived(current ? `tool:${current.id}` : page ? `page:${page}` : nav.route.kind);
   $effect(() => {
     const key = pageKey;
     menuOpen = false;
@@ -83,7 +87,7 @@
 
 <div class="shell" class:menu-open={menuOpen}>
   <div class="side-wrap">
-    <Sidebar here={current?.id ?? null} onDashboard={nav.route.kind === 'home'} onClose={() => (menuOpen = false)} />
+    <Sidebar here={current?.id ?? null} onDashboard={nav.route.kind === 'home'} {page} onClose={() => (menuOpen = false)} />
   </div>
   <button type="button" class="scrim" aria-label="Close menu" tabindex="-1" onclick={() => (menuOpen = false)}></button>
 
@@ -92,7 +96,7 @@
       <button type="button" class="quiet menu" aria-label="Open menu" aria-expanded={menuOpen} onclick={() => (menuOpen = true)} data-testid="menu">
         <Icon d={UI_ICONS.menu} size={18} />
       </button>
-      <span class="bar-title">{current ? current.name : nav.route.kind === 'home' ? 'Dashboard' : 'Not found'}</span>
+      <span class="bar-title">{current ? current.name : page ? PAGES[page] : nav.route.kind === 'home' ? 'Dashboard' : 'Not found'}</span>
       <div class="bar-right">
         <SecurityBadge />
         <ThemeSwitch />
@@ -125,6 +129,8 @@
           </div>
           {#key current.id}<ToolView />{/key}
         </section>
+      {:else if page}
+        {#key page}<FilesPage {page} bind:heading />{/key}
       {:else if nav.route.kind === 'missing'}
         <section class="tool" data-testid="not-found">
           <h1 bind:this={heading} tabindex="-1">Tool not found</h1>
@@ -137,6 +143,14 @@
           <p>{TOOLS.length} tools that work entirely on this Mac. Files are never uploaded, and the network is switched off for this page.</p>
           <p class="tip" data-testid="wheel-tip">Tip: drag a PDF onto this page and drop it on a tool in the wheel that appears.</p>
         </section>
+        {#if shelf.recent.length > 0}
+          <div class="section-h">
+            <h2>Recent files</h2>
+            <a href="#/recent" data-testid="see-recent">See all</a>
+          </div>
+          <RecentList limit={3} />
+          <h2 class="section-h">All tools</h2>
+        {/if}
         <div class="chips" role="group" aria-label="Show tools from">
           {#each ['All', ...groups] as g (g)}
             <button type="button" class="quiet" aria-pressed={filter === g} onclick={() => (filter = g)} data-testid="filter-{g}">{g}</button>
@@ -243,6 +257,23 @@
     margin: 6px 0 0;
     max-width: 62ch;
     color: var(--muted);
+  }
+  .section-h {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 4px 0 -8px;
+    font-size: 17px;
+  }
+  .section-h h2 {
+    margin: 0;
+    font-size: 17px;
+  }
+  .section-h a {
+    font-size: 13px;
+    color: var(--accent);
+    text-decoration: none;
   }
   .hero .tip {
     margin-top: 4px;

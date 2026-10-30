@@ -45,7 +45,7 @@ test('Forward to a closed file explains that it was not kept', async ({ page }) 
   await page.goBack();
   await expect(page.getByTestId('loaded-file')).toHaveCount(0);
   await page.goForward();
-  await expect(page.getByTestId('notice-info')).toContainText('never keeps files');
+  await expect(page.getByTestId('notice-info')).toContainText('was closed');
   await expect(page).toHaveURL(/#\/compress$/);
   await expect(page.getByTestId('loaded-file')).toHaveCount(0);
 });
@@ -95,6 +95,6 @@ test('an unknown address shows a not-found page with a way home', async ({ page 
 
 test('reloading on a file step returns to the picker', async ({ page }) => {
   await page.goto('/#/compress/file');
-  await expect(page.getByTestId('notice-info')).toContainText('never keeps files');
+  await expect(page.getByTestId('notice-info')).toContainText('was closed');
   await expect(page).toHaveURL(/#\/compress$/);
 });
