@@ -8,6 +8,7 @@
 // features (such as Map.getOrInsertComputed) that Safari and Chrome may lack.
 import { GlobalWorkerOptions, getDocument, type PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import { MAX_RENDER_IMAGE_PIXELS } from '../core/limits';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -63,6 +64,8 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
     enableXfa: false,
     useSystemFonts: false,
     stopAtErrors: false,
+    // PDF.js's worker drops oversized pictures before they reach the page.
+    maxImageSize: MAX_RENDER_IMAGE_PIXELS,
   } as Parameters<typeof getDocument>[0]);
   try {
     return await task.promise;
