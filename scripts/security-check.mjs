@@ -5,6 +5,9 @@
 //   node scripts/security-check.mjs                  source, lockfile, repo checks
 //   node scripts/security-check.mjs --dist           also check the built dist/
 //   node scripts/security-check.mjs --dist-only      only the dist/ checks (after a build)
+//   node scripts/security-check.mjs --history        also scan every file version in the git
+//       history (the repo is public, so old commits can be read too).
+//       Needs a full clone; security:daily runs it.
 //   node scripts/security-check.mjs --approve-packages
 //       rewrites scripts/approved-packages.txt from package-lock.json.
 //       Run it ONLY after the owner has approved a dependency change; the
@@ -276,6 +279,14 @@ function checkEgress(files) {
 }
 
 // Rule 9. No PDF files in the repo, under any name.
+// A PDF renamed to something else still has %PDF- in its first 1 KB. Our
+// own code mentions the header as text, so for code files only a file that
+// starts with it counts.
+function hasPdfHeader(file, head) {
+  const at = head.indexOf('%PDF-');
+  return at === 0 || (at > 0 && !/\.(ts|mjs|js|md)$/.test(file));
+}
+
 function checkNoPdfs(files) {
   const problems = [];
   for (const file of files) {
@@ -283,39 +294,114 @@ function checkNoPdfs(files) {
       problems.push(`${file} is a PDF file`);
       continue;
     }
-    // A PDF renamed to something else still has %PDF- in its first 1 KB.
-    // Our own code mentions the header as text, so for code files only a
-    // file that starts with it counts.
-    const code = /\.(ts|mjs|js|md)$/.test(file);
     const head = Buffer.alloc(1024);
     const fd = openSync(path.join(ROOT, file), 'r');
     const n = readSync(fd, head, 0, head.length, 0);
     closeSync(fd);
-    const at = head.subarray(0, n).indexOf('%PDF-');
-    if (at === 0 || (at > 0 && !code)) problems.push(`${file} contains a PDF header`);
+    if (hasPdfHeader(file, head.subarray(0, n))) problems.push(`${file} contains a PDF header`);
   }
   report('No PDF files committed', problems);
 }
 
 // I. Obvious secrets in tracked files (GitHub secret scanning is the backup).
+const SECRET_PATTERNS = [
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /\bgh[pousr]_[A-Za-z0-9]{36,}\b/,
+  /\bgithub_pat_[A-Za-z0-9_]{40,}\b/,
+  /\bAKIA[0-9A-Z]{16}\b/,
+  /\bsk-(ant-)?[A-Za-z0-9_-]{32,}\b/,
+  /\bxox[abpr]-[A-Za-z0-9-]{10,}\b/,
+  /\/\/registry\.npmjs\.org\/:_authToken=/,
+];
+const secretIn = (text) => SECRET_PATTERNS.find((re) => re.test(text));
+
 function checkSecrets(files) {
-  const patterns = [
-    /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-    /\bgh[pousr]_[A-Za-z0-9]{36,}\b/,
-    /\bgithub_pat_[A-Za-z0-9_]{40,}\b/,
-    /\bAKIA[0-9A-Z]{16}\b/,
-    /\bsk-(ant-)?[A-Za-z0-9_-]{32,}\b/,
-    /\bxox[abpr]-[A-Za-z0-9-]{10,}\b/,
-    /\/\/registry\.npmjs\.org\/:_authToken=/,
-  ];
   const problems = [];
   for (const file of files) {
     const full = path.join(ROOT, file);
     if (statSync(full).size > 2 * 1024 * 1024) continue; // models and binaries
-    const text = readFileSync(full, 'utf8');
-    for (const re of patterns) if (re.test(text)) problems.push(`${file}: looks like a secret (${re.source.slice(0, 24)}...)`);
+    const re = secretIn(readFileSync(full, 'utf8'));
+    if (re) problems.push(`${file}: looks like a secret (${re.source.slice(0, 24)}...)`);
   }
   report('No secrets in tracked files', problems);
+}
+
+// The repo is public, so anyone can open a pull request, and CI runs on it.
+// The workflows must keep a stranger's pull request from doing anything:
+// no pull_request_target or workflow_run (they run with the repo's own
+// rights), no secrets, read-only permissions, and only these actions,
+// pinned to a full commit SHA.
+const ALLOWED_ACTIONS = new Set(['actions/checkout', 'actions/setup-node', 'actions/cache']);
+
+function checkWorkflows(files) {
+  const problems = [];
+  for (const file of files.filter((f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(f))) {
+    const text = readFileSync(path.join(ROOT, file), 'utf8');
+    if (/\bpull_request_target\b/.test(text)) problems.push(`${file}: uses pull_request_target`);
+    if (/\bworkflow_run\b/.test(text)) problems.push(`${file}: uses workflow_run`);
+    if (/\$\{\{\s*secrets\./.test(text)) problems.push(`${file}: reads a secret`);
+    if (!/^permissions:/m.test(text)) problems.push(`${file}: no top-level permissions (must be contents: read)`);
+    if (/\bwrite-all\b|^\s*[a-z-]+:\s*write\s*(#.*)?$/m.test(text)) problems.push(`${file}: asks for a write permission`);
+    for (const [, uses] of text.matchAll(/^\s*(?:-\s*)?uses:\s*['"]?([^\s'"#]+)/gm)) {
+      const [name, ref = ''] = uses.split('@');
+      if (!ALLOWED_ACTIONS.has(name)) problems.push(`${file}: uses ${name}, which is not on the allowed list`);
+      else if (!/^[0-9a-f]{40}$/.test(ref)) problems.push(`${file}: ${name} is not pinned to a full commit SHA`);
+    }
+  }
+  report('CI workflows safe for outside pull requests', problems);
+}
+
+// Every version of every file ever committed, including deleted ones:
+// no PDFs, key files, secrets or private home-folder paths.
+const KEY_FILE = /(^|\/)(\.env(\.[^/]*)?|id_rsa|id_ed25519|[^/]*\.(pem|key|p12|pfx))$/i;
+const HOME_PATH = /\/Users\/[A-Za-z][^/\s'"`]*\//;
+
+function gitBuffer(args, input) {
+  return execFileSync('git', args, { cwd: ROOT, input, maxBuffer: 1024 * 1024 * 1024 });
+}
+
+function checkHistory() {
+  const problems = [];
+  if (gitBuffer(['rev-parse', '--is-shallow-repository']).toString().trim() === 'true') {
+    report('Whole git history is clean', ['this is a shallow clone, so old commits are missing: run it in a full clone']);
+    return;
+  }
+  // Each line is "<id>" (a commit) or "<id> <path>" (a folder or a file).
+  const where = new Map();
+  for (const line of gitBuffer(['rev-list', '--all', '--objects']).toString().split('\n')) {
+    const space = line.indexOf(' ');
+    if (space > 0 && !where.has(line.slice(0, space))) where.set(line.slice(0, space), line.slice(space + 1));
+  }
+  const types = gitBuffer(['cat-file', '--batch-check=%(objectname) %(objecttype) %(objectsize)'], [...where.keys()].join('\n') + '\n');
+  const blobs = [];
+  for (const line of types.toString().trim().split('\n')) {
+    const [id, type, size] = line.split(' ');
+    if (type !== 'blob') continue;
+    const file = where.get(id);
+    if (/\.pdf$/i.test(file)) problems.push({ id, msg: `${file} is a PDF file` });
+    else if (KEY_FILE.test(file)) problems.push({ id, msg: `${file} looks like a key or secrets file` });
+    if (Number(size) <= 2 * 1024 * 1024) blobs.push(id);
+  }
+  // "git cat-file --batch" prints "<id> <type> <size>\n<content>\n" per object.
+  const out = blobs.length ? gitBuffer(['cat-file', '--batch'], blobs.join('\n') + '\n') : Buffer.alloc(0);
+  for (let pos = 0; pos < out.length; ) {
+    const eol = out.indexOf(10, pos);
+    const [id, , size] = out.subarray(pos, eol).toString().split(' ');
+    const body = out.subarray(eol + 1, eol + 1 + Number(size));
+    pos = eol + 2 + Number(size);
+    const file = where.get(id);
+    if (!/\.pdf$/i.test(file) && hasPdfHeader(file, body.subarray(0, 1024))) problems.push({ id, msg: `${file} contains a PDF header` });
+    const text = body.toString('utf8');
+    const re = secretIn(text);
+    if (re) problems.push({ id, msg: `${file}: looks like a secret (${re.source.slice(0, 24)}...)` });
+    if (HOME_PATH.test(text)) problems.push({ id, msg: `${file}: contains a private home-folder path (${text.match(HOME_PATH)[0]})` });
+  }
+  // Name the commit that added each problem, so it can be found.
+  const named = problems.map(({ id, msg }) => {
+    const commit = gitBuffer(['log', '--all', '--format=%h', '--find-object', id]).toString().trim().split('\n').pop();
+    return `${msg} (added in commit ${commit})`;
+  });
+  report('Whole git history is clean', named);
 }
 
 // J. The built app: only expected file types, no source maps, no test
@@ -380,7 +466,9 @@ function main() {
     checkEgress(files);
     checkNoPdfs(files);
     checkSecrets(files);
+    checkWorkflows(files);
   }
+  if (args.includes('--history')) checkHistory();
   if (args.includes('--dist') || args.includes('--dist-only')) checkDist();
 
   let failed = 0;

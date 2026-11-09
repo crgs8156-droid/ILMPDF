@@ -47,6 +47,27 @@ function makeRepo(files: Record<string, string | Uint8Array> = {}, lock: Lock = 
   return dir;
 }
 
+// Commits everything staged, so the history check has commits to read.
+function commit(dir: string, message: string): void {
+  execFileSync('git', ['add', '-A', '-f'], { cwd: dir });
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--allow-empty', '-m', message], { cwd: dir });
+}
+
+const SHA = 'a'.repeat(40);
+const goodWorkflow = [
+  'on:',
+  '  pull_request:',
+  'permissions:',
+  '  contents: read',
+  'jobs:',
+  '  verify:',
+  '    steps:',
+  `      - uses: actions/checkout@${SHA} # v7`,
+  `      - uses: actions/setup-node@${SHA}`,
+  `      - uses: actions/cache@${SHA}`,
+  '      - run: npm ci',
+].join('\n');
+
 function run(dir: string, ...extra: string[]): { out: string; code: number } {
   try {
     return { out: execFileSync('node', [SCRIPT, '--root', dir, ...extra], { encoding: 'utf8' }), code: 0 };
@@ -160,5 +181,65 @@ describe('security-check', () => {
       const dir = makeRepo({ 'dist/index.html': '<p></p>', [file as string]: body as string });
       expect(status(run(dir, '--dist-only').out, 'dist/'), file).toBe('FAIL');
     }
+  });
+
+  it('checks that CI workflows give an outside pull request no rights', () => {
+    const ok = makeRepo({ '.github/workflows/ci.yml': goodWorkflow });
+    expect(status(run(ok).out, 'CI workflows')).toBe('ok');
+    for (const [bad, why] of [
+      [goodWorkflow.replace('pull_request:', 'pull_request_target:'), 'pull_request_target'],
+      [goodWorkflow.replace('on:', 'on:\n  workflow_run:'), 'workflow_run'],
+      [goodWorkflow.replace('contents: read', 'contents: write'), 'write permission'],
+      [goodWorkflow.replace('permissions:\n  contents: read\n', ''), 'no permissions'],
+      [goodWorkflow + '\n        env:\n          T: ${{ secrets.NPM_TOKEN }}', 'secret'],
+      [goodWorkflow.replace(`actions/cache@${SHA}`, 'actions/cache@v4'), 'tag instead of SHA'],
+      [goodWorkflow.replace(`actions/cache@${SHA}`, `someone/action@${SHA}`), 'unknown action'],
+    ]) {
+      const dir = makeRepo({ '.github/workflows/ci.yml': bad as string });
+      expect(status(run(dir).out, 'CI workflows'), why as string).toBe('FAIL');
+    }
+  });
+
+  it('finds a PDF, a key file, a secret or a home-folder path deleted from the files but still in history', () => {
+    const clean = makeRepo();
+    commit(clean, 'start');
+    expect(status(run(clean, '--history').out, 'git history')).toBe('ok');
+
+    const token = 'gh' + 'p_' + 'A1b2C3d4'.repeat(5);
+    const home = '/Us' + 'ers/alice/Documents/';
+    for (const [file, body, expected] of [
+      ['old/statement.pdf', '%PDF-1.7\n', 'is a PDF file'],
+      ['notes/scan.bin', '%PDF-1.7\n%binary', 'contains a PDF header'],
+      ['config/.env', 'A=1\n', 'key or secrets file'],
+      ['notes.md', `token ${token}\n`, 'looks like a secret'],
+      ['notes.md', `see ${home}tax.txt\n`, 'home-folder path'],
+    ]) {
+      const dir = makeRepo();
+      commit(dir, 'start');
+      mkdirSync(path.dirname(path.join(dir, file as string)), { recursive: true });
+      writeFileSync(path.join(dir, file as string), body as string);
+      commit(dir, 'add');
+      rmSync(path.join(dir, file as string));
+      commit(dir, 'remove again');
+      const { out, code } = run(dir, '--history');
+      expect(status(out, 'git history'), file as string).toBe('FAIL');
+      expect(out, file as string).toContain(expected as string);
+      expect(out, file as string).toMatch(/added in commit [0-9a-f]{7}/);
+      expect(code).toBe(1);
+      // Today's files are clean, so the normal checks pass.
+      expect(status(run(dir).out, 'No secrets')).toBe('ok');
+    }
+  });
+
+  it('refuses to call a shallow clone clean', () => {
+    const dir = makeRepo();
+    commit(dir, 'one');
+    commit(dir, 'two');
+    const shallow = mkdtempSync(path.join(tmpdir(), 'ilmpdf-shallow-'));
+    dirs.push(shallow);
+    execFileSync('git', ['clone', '-q', '--depth', '1', `file://${dir}`, shallow]);
+    const { out } = run(shallow, '--history');
+    expect(status(out, 'git history')).toBe('FAIL');
+    expect(out).toContain('shallow clone');
   });
 });
