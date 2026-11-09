@@ -2,7 +2,8 @@
 // Runs MuPDF (WebAssembly) on untrusted PDFs, isolated from the page. A fresh
 // worker is created for every job and terminated when it finishes.
 import { loadMupdf } from './load-mupdf';
-import type { JobResult, MupdfJob, MupdfRequest, JobOutput } from '../core/jobs';
+import type { JobResult, MupdfJob, MupdfRequest, JobOutput, ProgressMessage } from '../core/jobs';
+import { throttled, type Progress } from '../engines/progress';
 import { UserFacingError } from '../engines/pdflib-ops';
 import * as ops from '../engines/mupdf-ops';
 import { extractImages } from '../engines/mupdf-images';
@@ -13,7 +14,7 @@ import { removePages } from '../engines/mupdf-pages';
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
-async function run(job: MupdfJob): Promise<JobOutput> {
+async function run(job: MupdfJob, progress: Progress): Promise<JobOutput> {
   const mupdf = await loadMupdf();
   switch (job.op) {
     case 'inspect':
@@ -27,7 +28,7 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { files: [file], count: pages, repaired };
     }
     case 'compress': {
-      const { file, before, after, images } = ops.compress(mupdf, job.file, job.level);
+      const { file, before, after, images } = ops.compress(mupdf, job.file, job.level, progress);
       return { files: [file], sizes: { before, after, images } };
     }
     case 'readForm':
@@ -56,15 +57,15 @@ async function run(job: MupdfJob): Promise<JobOutput> {
       return { files: file ? [file] : [], removed: report };
     }
     case 'extractImages': {
-      const { files, ...extracted } = extractImages(mupdf, job.file, job.opts);
+      const { files, ...extracted } = extractImages(mupdf, job.file, job.opts, progress);
       return { files, extracted };
     }
     case 'flatten': {
-      const { file, annotations, fields, signatures } = flatten(mupdf, job.file, job.opts);
+      const { file, annotations, fields, signatures } = flatten(mupdf, job.file, job.opts, progress);
       return { files: [file], meta: { annotations: String(annotations), fields: String(fields), signatures: String(signatures) } };
     }
     case 'recolorRaster':
-      return { files: [recolorRaster(mupdf, job.file, job.opts)] };
+      return { files: [recolorRaster(mupdf, job.file, job.opts, progress)] };
     case 'compareText':
       return { diff: ops.compareText(mupdf, job.files[0], job.files[1]) };
     case 'readBookmarks': {
@@ -80,8 +81,12 @@ async function run(job: MupdfJob): Promise<JobOutput> {
 
 ctx.onmessage = async (event: MessageEvent<MupdfRequest>) => {
   const { id, job } = event.data;
+  const progress = throttled((done, total, step) => {
+    const message: ProgressMessage = { id, progress: { done, total, step } };
+    ctx.postMessage(message);
+  });
   try {
-    const output = await run(job);
+    const output = await run(job, progress);
     const result: JobResult = { id, ok: true, ...output };
     ctx.postMessage(result, (output.files ?? []).map((f) => f.buffer as ArrayBuffer));
   } catch (err) {

@@ -10,6 +10,7 @@ import type * as MuPDF from 'mupdf';
 import { MAX_IMAGES, MAX_PAGES } from '../core/limits';
 import { open } from './mupdf-ops';
 import { UserFacingError } from './pdflib-ops';
+import { noProgress, type Progress } from './progress';
 
 type Mupdf = typeof MuPDF;
 
@@ -41,7 +42,7 @@ const MAX_PIXELS = 60_000_000; // above this, decoding could run out of memory
 const MAX_OUTPUT_BYTES = 400 * 1024 * 1024; // keeps the result well inside Safari's memory limit
 const MAX_DEPTH = 10; // nested groups deeper than this are almost certainly a trap
 
-export function extractImages(mupdf: Mupdf, bytes: Uint8Array, opts: ImageOptions): ImageReport {
+export function extractImages(mupdf: Mupdf, bytes: Uint8Array, opts: ImageOptions, progress: Progress = noProgress): ImageReport {
   const pdf = open(mupdf, bytes);
   try {
     if (pdf.needsPassword()) throw new UserFacingError('This PDF is password-protected. Unlock it first, then extract its images.');
@@ -51,7 +52,8 @@ export function extractImages(mupdf: Mupdf, bytes: Uint8Array, opts: ImageOption
     const report: ImageReport = { images: [], files: [], tiny: 0, repeats: 0, failed: 0, truncated: false };
     const seen = new Set<number>();
     let total = 0;
-    for (const p of opts.pages) {
+    for (const [n, p] of opts.pages.entries()) {
+      progress(n, opts.pages.length, 'page');
       if (!(p >= 0 && p < count)) continue;
       const page = pdf.loadPage(p);
       try {

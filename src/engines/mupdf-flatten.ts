@@ -6,6 +6,7 @@ import type * as MuPDF from 'mupdf';
 import { MAX_PAGES } from '../core/limits';
 import { open } from './mupdf-ops';
 import { UserFacingError } from './pdflib-ops';
+import { noProgress, type Progress } from './progress';
 
 type Mupdf = typeof MuPDF;
 
@@ -24,7 +25,7 @@ export type FlattenResult = { file: Uint8Array; annotations: number; fields: num
 // and links are not baked by MuPDF at all, so neither is counted.
 const NOT_COUNTED = new Set(['Popup', 'Link']);
 
-export function flatten(mupdf: Mupdf, bytes: Uint8Array, opts: FlattenOptions): FlattenResult {
+export function flatten(mupdf: Mupdf, bytes: Uint8Array, opts: FlattenOptions, progress: Progress = noProgress): FlattenResult {
   if (!opts.annotations && !opts.fields) throw new UserFacingError('Choose what to flatten first.');
   const pdf = open(mupdf, bytes);
   try {
@@ -38,6 +39,7 @@ export function flatten(mupdf: Mupdf, bytes: Uint8Array, opts: FlattenOptions): 
     const fieldNames = new Set<string>();
     const signed = new Set<string>();
     for (let i = 0; i < pages; i++) {
+      progress(i, pages, 'page');
       const page = pdf.loadPage(i);
       try {
         if (opts.annotations) annotations += page.getAnnotations().filter((a) => !NOT_COUNTED.has(a.getType())).length;
@@ -60,6 +62,8 @@ export function flatten(mupdf: Mupdf, bytes: Uint8Array, opts: FlattenOptions): 
     // MuPDF's bake draws each item's appearance into the page and deletes the
     // item. Baking fields also removes the form itself (AcroForm, including
     // any XFA layer), so the result is no longer a fillable form.
+    // One MuPDF call does all pages, so from here on it can only say "saving".
+    progress(0, 1, 'save');
     pdf.bake(opts.annotations, opts.fields);
     const out = pdf.saveToBuffer({ garbage: 'compact' });
     return { file: new Uint8Array(out.asUint8Array()), annotations, fields: fieldNames.size, signatures: signed.size };

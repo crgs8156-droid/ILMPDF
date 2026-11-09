@@ -6,6 +6,9 @@
 // the switch, which ends the job's worker at once, so the task's `await`
 // fails before it reaches any save: nothing is saved after Cancel.
 // tests/unit/cancel-wiring.test.ts checks that every tool passes the signal on.
+import type { JobProgress } from './jobs';
+import { progressLabel } from '../engines/progress';
+
 export type RunProgress = { done: number; total: number; label: string };
 
 export class ToolRun {
@@ -52,6 +55,9 @@ export class ToolRun {
   cancel(): void {
     this.stopper?.abort();
   }
+
+  /** Pass as a job's `onProgress` to show the engine's own reports. */
+  track = (p: JobProgress): void => this.report(p.done, p.total, progressLabel(p.done, p.total, p.step));
 
   /** Shows progress under the tool's button while it runs. */
   report(done: number, total: number, label: string): void {

@@ -1,4 +1,4 @@
-import type { JobOutput, JobResult, MupdfJob, OcrJob, OcrProgressMessage, PdfJob } from './jobs';
+import type { JobOutput, JobProgress, JobResult, MupdfJob, OcrJob, OcrProgressMessage, PdfJob, ProgressMessage } from './jobs';
 import { JOB_TIMEOUT_MS, OCR_PAGE_TIMEOUT_MS } from './limits';
 
 // Each job gets a fresh worker that is terminated as soon as the job ends,
@@ -6,6 +6,8 @@ import { JOB_TIMEOUT_MS, OCR_PAGE_TIMEOUT_MS } from './limits';
 export type JobOptions = {
   /** Aborting (the tool's Cancel button) ends the worker at once; nothing is saved. */
   signal?: AbortSignal | undefined;
+  /** Called with "page 3 of 20" style reports, for the jobs that send them. */
+  onProgress?: ((p: JobProgress) => void) | undefined;
 };
 
 /** The error a job rejects with when it was cancelled. */
@@ -17,7 +19,7 @@ export function runPdfJob(job: PdfJob, opts: JobOptions = {}): Promise<JobOutput
     type: 'module',
     name: 'ilmpdf-pdflib',
   });
-  return runInWorker(worker, job, opts.signal);
+  return runInWorker(worker, job, opts);
 }
 
 /** Same as runPdfJob, but on the MuPDF engine (passwords, repair, compress). */
@@ -26,10 +28,10 @@ export function runMupdfJob(job: MupdfJob, opts: JobOptions = {}): Promise<JobOu
     type: 'module',
     name: 'ilmpdf-mupdf',
   });
-  return runInWorker(worker, job, opts.signal);
+  return runInWorker(worker, job, opts);
 }
 
-export type OcrRunOptions = JobOptions & {
+export type OcrRunOptions = Pick<JobOptions, 'signal'> & {
   onProgress?: (done: number, total: number) => void;
 };
 
@@ -91,8 +93,9 @@ export function runOcrJob(job: OcrJob, opts: OcrRunOptions = {}): Promise<JobOut
   });
 }
 
-function runInWorker(worker: Worker, job: PdfJob | MupdfJob, signal?: AbortSignal): Promise<JobOutput> {
+function runInWorker(worker: Worker, job: PdfJob | MupdfJob, opts: JobOptions): Promise<JobOutput> {
   const id = crypto.randomUUID();
+  const { signal, onProgress } = opts;
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -114,10 +117,12 @@ function runInWorker(worker: Worker, job: PdfJob | MupdfJob, signal?: AbortSigna
     if (signal?.aborted) return cancel();
     signal?.addEventListener('abort', cancel);
 
-    worker.onmessage = (event: MessageEvent<JobResult>) => {
-      finish();
+    worker.onmessage = (event: MessageEvent<JobResult | ProgressMessage>) => {
       const result = event.data;
-      if (result.id !== id) return reject(new Error('Mismatched job result'));
+      // Progress reports come before the result and leave the worker running.
+      if ('progress' in result && result.id === id) return onProgress?.(result.progress);
+      finish();
+      if (result.id !== id || 'progress' in result) return reject(new Error('Mismatched job result'));
       if (result.ok) resolve(result);
       else reject(new Error(result.error));
     };

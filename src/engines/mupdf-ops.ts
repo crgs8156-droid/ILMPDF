@@ -5,6 +5,7 @@ import type * as MuPDF from 'mupdf';
 import { MAX_ANNOTATIONS, MAX_INK_POINTS, MAX_PAGES } from '../core/limits';
 import { UserFacingError } from './pdflib-ops';
 import { diffWords, type TextDiff } from '../core/word-diff';
+import { noProgress, type Progress } from './progress';
 
 /**
  * encrypted: the file uses PDF encryption at all.
@@ -180,14 +181,15 @@ const LEVELS: Record<CompressLevel, { dpi: number; quality: number } | null> = {
  * duplicate objects and packs small objects into compressed object streams.
  * If the result is not smaller, the original bytes are returned unchanged.
  */
-export function compress(mupdf: Mupdf, bytes: Uint8Array, level: CompressLevel): CompressResult {
+export function compress(mupdf: Mupdf, bytes: Uint8Array, level: CompressLevel, progress: Progress = noProgress): CompressResult {
   const pdf = open(mupdf, bytes);
   try {
     if (pdf.needsPassword()) throw new UserFacingError('This PDF has a password. Unlock it first, then compress it.');
     const pages = pdf.countPages();
     checkPageLimit(pages);
     const settings = LEVELS[level];
-    const images = settings ? recompressImages(mupdf, pdf, largestPageInches(pdf, pages) * settings.dpi, settings.quality) : 0;
+    const images = settings ? recompressImages(mupdf, pdf, largestPageInches(pdf, pages) * settings.dpi, settings.quality, progress) : 0;
+    progress(0, 1, 'save');
     const out = pdf.saveToBuffer({
       garbage: 'deduplicate',
       compress: 'yes',
@@ -223,21 +225,26 @@ const MAX_PIXELS = 60_000_000; // above this, decoding could run out of memory
  * left alone when it is a transparency mask, is black-and-white (1 bit), uses
  * a colour-key mask, or when JPEG would not make it clearly smaller.
  */
-function recompressImages(mupdf: Mupdf, pdf: MuPDF.PDFDocument, maxSide: number, quality: number): number {
+function recompressImages(mupdf: Mupdf, pdf: MuPDF.PDFDocument, maxSide: number, quality: number, progress: Progress): number {
   const isImage = (obj: MuPDF.PDFObject) => obj.isStream() && obj.get('Subtype').toString() === '/Image';
   const masks = new Set<number>();
+  const candidates: number[] = [];
   for (let i = 1; i < pdf.countObjects(); i++) {
     const obj = pdf.newIndirect(i);
     if (!isImage(obj)) continue;
+    candidates.push(i);
     for (const key of ['SMask', 'Mask']) {
       const ref = obj.get(key);
       if (ref.isIndirect()) masks.add(ref.asIndirect());
     }
   }
   let replaced = 0;
-  for (let i = 1; i < pdf.countObjects(); i++) {
+  // Only images that were in the file to begin with are visited, so the
+  // JPEGs added along the way are never re-checked.
+  const todo = candidates.filter((i) => !masks.has(i));
+  for (const [n, i] of todo.entries()) {
+    progress(n, todo.length, 'image');
     const obj = pdf.newIndirect(i);
-    if (!isImage(obj) || masks.has(i)) continue;
     if (obj.get('ImageMask').valueOf() === true || obj.get('Mask').isArray()) continue;
     if (obj.get('BitsPerComponent').valueOf() === 1) continue;
     const w = Number(obj.get('Width').valueOf());

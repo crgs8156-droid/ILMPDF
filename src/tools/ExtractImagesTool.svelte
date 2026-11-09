@@ -23,7 +23,7 @@
       if (!parsed.ok) throw new Error(parsed.error);
       const pages = [...new Set(parsed.groups.flat())];
 
-      const out = await runMupdfJob({ op: 'extractImages', file: copyBytes(file.bytes), opts: { pages, skipTiny } }, { signal });
+      const out = await runMupdfJob({ op: 'extractImages', file: copyBytes(file.bytes), opts: { pages, skipTiny } }, { signal, onProgress: job.track });
       const report = out.extracted!;
       const files = out.files ?? [];
       const base = safeFileName(file.name).replace(/\.pdf$/, '');

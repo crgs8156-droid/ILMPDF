@@ -12,6 +12,7 @@ import type { ImageOptions, ImageReport } from '../engines/mupdf-images';
 import type { FlattenOptions } from '../engines/mupdf-flatten';
 import type { OverlayOptions } from '../engines/recolor';
 import type { RasterOptions } from '../engines/mupdf-recolor';
+import type { ProgressStep } from '../engines/progress';
 
 export type PdfJob =
   | { op: 'pageCount'; file: Uint8Array }
@@ -72,6 +73,10 @@ export type OcrRequest = { id: string; job: OcrJob };
 
 /** Sent by the OCR worker before each page, so the tool can show progress. */
 export type OcrProgressMessage = { id: string; progress: { done: number; total: number } };
+
+/** Sent by the MuPDF worker while a long job runs (Compress, Greyscale, Extract images, Flatten). */
+export type JobProgress = { done: number; total: number; step: ProgressStep };
+export type ProgressMessage = { id: string; progress: JobProgress };
 
 export type JobOutput = {
   files?: Uint8Array[];

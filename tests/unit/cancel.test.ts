@@ -11,13 +11,15 @@ class FakeWorker {
   static made: FakeWorker[] = [];
   terminated = false;
   posted = 0;
+  lastId = '';
   onmessage: ((e: { data: unknown }) => void) | null = null;
   onerror: ((e: { preventDefault(): void }) => void) | null = null;
   constructor() {
     FakeWorker.made.push(this);
   }
-  postMessage() {
+  postMessage(message: { id: string }) {
     this.posted++;
+    this.lastId = message.id;
   }
   terminate() {
     this.terminated = true;
@@ -142,5 +144,35 @@ describe('ToolRun', () => {
     await run.run(async () => 'ok');
     expect(run.cancelled).toBe(false);
     expect(run.done).toEqual(['ok']);
+  });
+});
+
+describe('Progress from a worker', () => {
+  it('passes reports to onProgress and keeps the worker running until the result', async () => {
+    const seen: unknown[] = [];
+    const job = runMupdfJob({ op: 'compress', file: file(), level: 'light' }, { onProgress: (p) => seen.push(p) });
+    const worker = FakeWorker.made[0]!;
+    // The orchestrator made up the job id; read it back from what it sent.
+    const id = (worker as unknown as { lastId: string }).lastId;
+    worker.onmessage!({ data: { id, progress: { done: 1, total: 3, step: 'image' } } });
+    expect(worker.terminated).toBe(false);
+    worker.onmessage!({ data: { id, ok: true, sizes: { before: 3, after: 2, images: 0 } } });
+    await expect(job).resolves.toMatchObject({ ok: true });
+    expect(seen).toEqual([{ done: 1, total: 3, step: 'image' }]);
+    expect(worker.terminated).toBe(true);
+  });
+
+  it('a report for another job ends the job as a mismatch', async () => {
+    const job = runMupdfJob({ op: 'compress', file: file(), level: 'light' }, { onProgress: () => {} });
+    FakeWorker.made[0]!.onmessage!({ data: { id: 'someone-else', progress: { done: 0, total: 1, step: 'page' } } });
+    await expect(job).rejects.toThrow('Mismatched job result');
+  });
+
+  it('ToolRun.track turns a report into words under the button', async () => {
+    const run = new ToolRun();
+    await run.run(async () => {
+      run.track({ done: 2, total: 5, step: 'page' });
+      expect(run.progress).toEqual({ done: 2, total: 5, label: 'Working on page 3 of 5…' });
+    });
   });
 });

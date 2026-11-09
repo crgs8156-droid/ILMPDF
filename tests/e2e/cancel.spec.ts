@@ -48,3 +48,21 @@ test('cancel: stops a batch and makes no ZIP', async ({ page }) => {
   await page.waitForTimeout(1500);
   expect(downloads).toBe(0);
 });
+
+test('progress: image-based Greyscale shows which page it is on, then saves', async ({ page }) => {
+  test.slow();
+  await openTool(page, 'recolor');
+  await addPdf(page, 'scan.pdf', await get('17-scanned-heavy.pdf'));
+  await page.getByTestId('mode-raster').check();
+  await page.getByTestId('dpi').selectOption('300');
+  const [saved] = await collectDownloads(
+    page,
+    async () => {
+      await page.getByTestId('run').click();
+      await expect(page.getByTestId('progress')).toContainText(/Working on page \d of 3|Saving the new file/);
+    },
+    1,
+  );
+  expect(saved!.suggestedFilename()).toContain('scan');
+  await expect(page.getByTestId('progress')).toHaveCount(0);
+});
