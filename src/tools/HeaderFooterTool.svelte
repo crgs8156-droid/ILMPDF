@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import { parsePageGroups } from '../core/page-spec';
   import { batesLabel, fillTemplate, localDate, SLOTS, type Slot } from '../core/header-text';
@@ -68,7 +69,7 @@
   }
 
   function apply(file: PdfFile) {
-    job.run(async () => {
+    job.run(async (signal) => {
       if (spec.trim()) {
         const parsed = parsePageGroups(spec, file.pages);
         if (!parsed.ok) throw new Error(parsed.error);
@@ -86,8 +87,8 @@
           date,
           bates: { ...bates },
         },
-      });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-stamped'));
       const count = pages.length || file.pages;
       return `Added headers and footers to ${count} page${count === 1 ? '' : 's'}.${note}`;
@@ -126,6 +127,7 @@
       <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => apply(file)} data-testid="run">{job.busy ? 'Working…' : 'Add headers & footers'}</button>
+        <RunStatus run={job} />
       </div>
     </div>
     <Notice messages={job.errors} />

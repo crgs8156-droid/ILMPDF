@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
@@ -17,13 +18,13 @@
   let alsoClean = $state(false);
 
   function apply(file: PdfFile) {
-    job.run(async () => {
+    job.run(async (signal) => {
       const out = await runPdfJob({
         op: 'watermark',
         file: copyBytes(file.bytes),
         opts: { text, fontSize: Number(fontSize), opacity: Number(opacity) / 100, diagonal },
-      });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-watermarked'));
       return `Watermarked ${file.pages} pages.${note}`;
     });
@@ -43,6 +44,7 @@
       <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => apply(file)} data-testid="run">{job.busy ? 'Working…' : 'Add watermark'}</button>
+        <RunStatus run={job} />
       </div>
     </div>
     <Notice messages={job.errors} />

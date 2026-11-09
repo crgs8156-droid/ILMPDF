@@ -7,6 +7,7 @@
   import { copyBytes, runMupdfJob } from '../core/orchestrator';
   import { saveBytes } from '../core/save';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { changeViews, formatReport, summarize, type TextDiff } from '../core/word-diff';
 
   // At most this many changes are drawn on screen; the saved report has all.
@@ -48,8 +49,8 @@
 
   function compare(a: PdfFile, b: PdfFile) {
     diff = null;
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'compareText', files: [copyBytes(a.bytes), copyBytes(b.bytes)] });
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'compareText', files: [copyBytes(a.bytes), copyBytes(b.bytes)] }, { signal });
       diff = out.diff!;
       if (diff.wordsA === 0 && diff.wordsB === 0) {
         return 'Neither file has any text, so they are probably scanned. Use the Visual tab to compare the pages.';
@@ -107,6 +108,7 @@
         {job.busy ? 'Comparing…' : 'Compare'}
       </button>
       <button type="button" class="quiet" disabled={job.busy} onclick={swap} data-testid="swap">Swap older and newer</button>
+      <RunStatus run={job} />
     </div>
   </div>
   <Notice messages={job.errors} />

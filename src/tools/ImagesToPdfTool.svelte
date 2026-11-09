@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { formatBytes } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import type { PageSize } from '../engines/pdflib-ops';
 
   let images = $state<ImageFile[]>([]);
@@ -21,13 +22,13 @@
   }
 
   function convert() {
-    job.run(async () => {
+    job.run(async (signal) => {
       const out = await runPdfJob({
         op: 'imagesToPdf',
         images: images.map((i) => ({ bytes: copyBytes(i.bytes), kind: i.kind })),
         size,
         margin: Math.max(0, Math.min(144, Number(margin) || 0)),
-      });
+      }, { signal });
       saveBytes(out.files![0]!, 'images.pdf');
       return `Created a ${images.length}-page PDF. Saved images.pdf.`;
     });
@@ -74,6 +75,7 @@
     </div>
     <div class="actions">
       <button disabled={job.busy} onclick={convert} data-testid="run">{job.busy ? 'Converting…' : 'Create PDF'}</button>
+      <RunStatus run={job} />
     </div>
   </div>
 {/if}

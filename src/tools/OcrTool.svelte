@@ -9,43 +9,35 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
 
   let spec = $state('');
   let skipText = $state(true);
   let alsoClean = $state(false);
-  let progress = $state<{ done: number; total: number } | null>(null);
-  let stopper: AbortController | null = null;
   const job = new ToolRun();
 
   const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
   function read(file: PdfFile) {
-    job.run(async () => {
+    job.run(async (signal) => {
       const parsed = spec.trim() ? parsePageGroups(spec, file.pages) : { ok: true as const, groups: [] };
       if (!parsed.ok) throw new Error(parsed.error);
       const pages = [...new Set(parsed.groups.flat())];
-      stopper = new AbortController();
-      progress = { done: 0, total: pages.length || file.pages };
-      try {
-        const out = await runOcrJob(
-          { op: 'ocr', file: copyBytes(file.bytes), pages, skipText },
-          { onProgress: (done, total) => (progress = { done, total }), signal: stopper.signal },
-        );
-        const pagesRead = Number(out.meta?.read ?? 0);
-        const skipped = Number(out.meta?.skipped ?? 0);
-        const words = out.count ?? 0;
-        if (pagesRead === 0) return 'Every page already has text, so there was nothing to read. Nothing was saved.';
-        if (words === 0) {
-          return `No words were recognised on ${plural(pagesRead, 'page')}. They may be photos or drawings rather than text. Nothing was saved.`;
-        }
-        const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
-        saveBytes(saved!, safeFileName(file.name, '-ocr'));
-        const skip = skipped ? ` Left ${plural(skipped, 'page')} that already had text as they were.` : '';
-        return `Made ${plural(pagesRead, 'page')} searchable (${plural(words, 'word')} recognised) and saved a copy.${skip}${note}`;
-      } finally {
-        progress = null;
-        stopper = null;
+      const show = (done: number, total: number) =>
+        job.report(done, total, done < total ? `Reading page ${done + 1} of ${total}…` : 'Saving…');
+      show(0, pages.length || file.pages);
+      const out = await runOcrJob({ op: 'ocr', file: copyBytes(file.bytes), pages, skipText }, { onProgress: show, signal });
+      const pagesRead = Number(out.meta?.read ?? 0);
+      const skipped = Number(out.meta?.skipped ?? 0);
+      const words = out.count ?? 0;
+      if (pagesRead === 0) return 'Every page already has text, so there was nothing to read. Nothing was saved.';
+      if (words === 0) {
+        return `No words were recognised on ${plural(pagesRead, 'page')}. They may be photos or drawings rather than text. Nothing was saved.`;
       }
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
+      saveBytes(saved!, safeFileName(file.name, '-ocr'));
+      const skip = skipped ? ` Left ${plural(skipped, 'page')} that already had text as they were.` : '';
+      return `Made ${plural(pagesRead, 'page')} searchable (${plural(words, 'word')} recognised) and saved a copy.${skip}${note}`;
     });
   }
 </script>
@@ -71,30 +63,10 @@
         <button type="button" disabled={job.busy} onclick={() => read(file)} data-testid="run">
           {job.busy ? 'Reading…' : 'Make searchable'}
         </button>
-        {#if job.busy}
-          <button type="button" class="quiet" onclick={() => stopper?.abort()} data-testid="ocr-cancel">Cancel</button>
-        {/if}
+        <RunStatus run={job} />
       </div>
-      {#if progress}
-        <div class="progress" data-testid="ocr-progress">
-          <progress value={progress.done} max={progress.total}></progress>
-          <span class="muted">
-            {progress.done < progress.total ? `Reading page ${progress.done + 1} of ${progress.total}…` : 'Saving…'}
-          </span>
-        </div>
-      {/if}
     </div>
     <Notice messages={job.errors} />
     <Notice kind="ok" messages={job.done} />
   {/snippet}
 </SinglePdf>
-
-<style>
-  .progress {
-    display: grid;
-    gap: 4px;
-  }
-  progress {
-    width: 100%;
-  }
-</style>

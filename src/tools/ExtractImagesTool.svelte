@@ -7,6 +7,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { MAX_IMAGES } from '../core/limits';
 
   let spec = $state('');
@@ -16,13 +17,13 @@
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
   function extract(file: PdfFile) {
-    job.run(async () => {
+    job.run(async (signal) => {
       const all = Array.from({ length: file.pages }, (_, i) => i);
       const parsed = spec.trim() ? parsePageGroups(spec, file.pages) : { ok: true as const, groups: [all] };
       if (!parsed.ok) throw new Error(parsed.error);
       const pages = [...new Set(parsed.groups.flat())];
 
-      const out = await runMupdfJob({ op: 'extractImages', file: copyBytes(file.bytes), opts: { pages, skipTiny } });
+      const out = await runMupdfJob({ op: 'extractImages', file: copyBytes(file.bytes), opts: { pages, skipTiny } }, { signal });
       const report = out.extracted!;
       const files = out.files ?? [];
       const base = safeFileName(file.name).replace(/\.pdf$/, '');
@@ -67,6 +68,7 @@
       </label>
       <div class="actions">
         <button disabled={job.busy} onclick={() => extract(file)} data-testid="run">{job.busy ? 'Extracting…' : 'Extract images'}</button>
+        <RunStatus run={job} />
       </div>
       <p class="muted">Each image downloads as its own file. Safari may ask once to allow several downloads.</p>
     </div>

@@ -5,6 +5,7 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { describeRemoved } from '../core/clean';
 
   type Picked = { name: string; size: number; bytes: Uint8Array };
@@ -30,8 +31,8 @@
   }
 
   function clean(f: Picked) {
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'sanitize', file: copyBytes(f.bytes) });
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'sanitize', file: copyBytes(f.bytes) }, { signal });
       const cleaned = out.files?.[0];
       if (!cleaned) return 'Nothing to remove: this PDF has no scripts, automatic actions or attached files. No new file was saved.';
       saveBytes(cleaned, safeFileName(f.name, '-clean'));
@@ -65,6 +66,7 @@
       <button type="button" disabled={job.busy} onclick={() => file && clean(file)} data-testid="run">
         {job.busy ? 'Removing…' : 'Remove scripts'}
       </button>
+      <RunStatus run={job} />
     </div>
   </div>
   <Notice messages={job.errors} />
