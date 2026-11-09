@@ -9,6 +9,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { PagePlan } from '../engines/pdflib-ops';
@@ -52,18 +53,18 @@
   const plan = (list: Card[]): PagePlan[] => list.map((c) => ({ index: c.index, rotate: c.rotate }));
 
   function saveAll() {
-    job.run(async () => {
-      const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan: plan(cards) });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan: plan(cards) }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-organized'));
       return `Saved ${cards.length} pages.${note}`;
     });
   }
   function extractSelected() {
-    job.run(async () => {
+    job.run(async (signal) => {
       const chosen = cards.filter((c) => c.selected);
-      const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan: plan(chosen) });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      const out = await runPdfJob({ op: 'organize', file: copyBytes(file.bytes), plan: plan(chosen) }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-extract'));
       return `Extracted ${chosen.length} page${chosen.length === 1 ? '' : 's'}.${note}`;
     });
@@ -122,6 +123,7 @@
   <button class="quiet" disabled={job.busy || selectedCount === 0} onclick={extractSelected} data-testid="extract">
     Extract {selectedCount} selected page{selectedCount === 1 ? '' : 's'}
   </button>
+  <RunStatus run={job} />
 </div>
 <Notice messages={job.errors} />
 <Notice kind="ok" messages={job.done} />

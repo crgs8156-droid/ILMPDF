@@ -7,6 +7,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import { MM, PAPER, type Paper, type ResizeOptions } from '../engines/pagetools-ops';
 
@@ -23,7 +24,7 @@
   const job = new ToolRun();
 
   function resize() {
-    job.run(async () => {
+    job.run(async (signal) => {
       let pages: number[] = [];
       if (spec.trim()) {
         const parsed = parsePageGroups(spec, file.pages);
@@ -36,8 +37,8 @@
         op: 'resize',
         file: copyBytes(file.bytes),
         opts: { width, height, orientation, margin: Number(marginMm) * MM, pages },
-      });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-resized'));
       const count = pages.length ? new Set(pages).size : file.pages;
       return `Resized ${count} page${count === 1 ? '' : 's'}.${note}`;
@@ -77,6 +78,7 @@
   <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button disabled={job.busy} onclick={resize} data-testid="run">{job.busy ? 'Working…' : 'Resize pages'}</button>
+    <RunStatus run={job} />
   </div>
 </div>
 <Notice messages={job.errors} />

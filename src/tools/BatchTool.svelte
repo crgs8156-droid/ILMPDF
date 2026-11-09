@@ -6,6 +6,7 @@
   import { MAX_FILES } from '../core/limits';
   import { saveBytes } from '../core/save';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import {
     BATCH_ACTIONS,
     MAX_BATCH_BYTES,
@@ -114,7 +115,7 @@
     password = '';
     confirm = '';
     for (const item of items) item.result = undefined;
-    job.run(async () => {
+    job.run(async (signal) => {
       const results = await runBatch(
         items.map((i) => ({ name: i.name, bytes: i.bytes })),
         chosen,
@@ -122,7 +123,9 @@
         (index, result) => {
           const item = items[index];
           if (item) item.result = result;
+          job.report(index + 1, items.length, `File ${index + 1} of ${items.length} done`);
         },
+        signal,
       );
       const zip = batchZip(chosen.kind, results);
       const failed = results.filter((r) => r.error).length;
@@ -246,6 +249,7 @@
       <button type="submit" disabled={!ready} data-testid="run">
         {job.busy ? 'Working…' : `Run on ${items.length} file${items.length === 1 ? '' : 's'}`}
       </button>
+      <RunStatus run={job} />
     </div>
   </form>
   <Notice messages={job.errors} />

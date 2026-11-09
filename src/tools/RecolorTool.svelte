@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import { parsePageGroups } from '../core/page-spec';
   import type { RecolorEffect } from '../engines/recolor';
@@ -30,13 +31,13 @@
   }
 
   function apply(file: PdfFile) {
-    job.run(async () => {
+    job.run(async (signal) => {
       const pages = parsePages(file);
       const out =
         mode === 'overlay'
-          ? await runPdfJob({ op: 'recolorOverlay', file: copyBytes(file.bytes), opts: { effect, pages } })
-          : await runMupdfJob({ op: 'recolorRaster', file: copyBytes(file.bytes), opts: { effect, dpi: Number(dpi) as RasterDpi, pages } });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+          ? await runPdfJob({ op: 'recolorOverlay', file: copyBytes(file.bytes), opts: { effect, pages } }, { signal })
+          : await runMupdfJob({ op: 'recolorRaster', file: copyBytes(file.bytes), opts: { effect, dpi: Number(dpi) as RasterDpi, pages } }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, effect === 'greyscale' ? '-greyscale' : '-inverted'));
       const count = pages.length || file.pages;
       const what = effect === 'greyscale' ? 'Made a greyscale copy of' : 'Inverted the colours of';
@@ -100,6 +101,7 @@
         <button disabled={job.busy} onclick={() => apply(file)} data-testid="run">
           {job.busy ? 'Working…' : effect === 'greyscale' ? 'Make greyscale copy' : 'Invert colours'}
         </button>
+        <RunStatus run={job} />
       </div>
     </div>
     <Notice messages={job.errors} />
