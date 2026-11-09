@@ -23,7 +23,7 @@
 
   function compress(file: PdfFile) {
     job.run(async (signal) => {
-      const out = await runMupdfJob({ op: 'compress', file: copyBytes(file.bytes), level }, { signal });
+      const out = await runMupdfJob({ op: 'compress', file: copyBytes(file.bytes), level }, { signal, onProgress: job.track });
       const { before, after } = out.sizes!;
       if (after >= before) {
         const tip = "This PDF is already compact: this level couldn't make it smaller. Try a stronger level.";

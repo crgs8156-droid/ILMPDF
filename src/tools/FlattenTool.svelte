@@ -38,7 +38,7 @@
 
   function run(f: Picked) {
     job.run(async (signal) => {
-      const out = await runMupdfJob({ op: 'flatten', file: copyBytes(f.bytes), opts: { fields, annotations } }, { signal });
+      const out = await runMupdfJob({ op: 'flatten', file: copyBytes(f.bytes), opts: { fields, annotations } }, { signal, onProgress: job.track });
       const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(f.name, '-flattened'));
       const counts = {

@@ -8,6 +8,7 @@ import { MAX_PAGES } from '../core/limits';
 import { open } from './mupdf-ops';
 import { UserFacingError } from './pdflib-ops';
 import type { RecolorEffect } from './recolor';
+import { noProgress, type Progress } from './progress';
 
 type Mupdf = typeof MuPDF;
 
@@ -26,7 +27,7 @@ export type RasterOptions = {
  */
 export const MAX_PAGE_PIXELS = 40_000_000;
 
-export function recolorRaster(mupdf: Mupdf, bytes: Uint8Array, opts: RasterOptions): Uint8Array {
+export function recolorRaster(mupdf: Mupdf, bytes: Uint8Array, opts: RasterOptions, progress: Progress = noProgress): Uint8Array {
   if (opts.dpi !== 150 && opts.dpi !== 300) throw new UserFacingError('Choose 150 or 300 dpi.');
   const src = open(mupdf, bytes);
   const out = new mupdf.PDFDocument();
@@ -39,11 +40,13 @@ export function recolorRaster(mupdf: Mupdf, bytes: Uint8Array, opts: RasterOptio
     // Greyscale pages only need one colour channel, a third of the memory.
     const space = opts.effect === 'greyscale' ? mupdf.ColorSpace.DeviceGray : mupdf.ColorSpace.DeviceRGB;
 
+    let done = 0;
     for (let i = 0; i < count; i++) {
       if (!chosen.has(i)) {
         out.graftPage(-1, src, i);
         continue;
       }
+      progress(done++, chosen.size, 'page');
       const page = src.loadPage(i);
       let pix: MuPDF.Pixmap | undefined;
       let image: MuPDF.Image | undefined;
@@ -68,6 +71,7 @@ export function recolorRaster(mupdf: Mupdf, bytes: Uint8Array, opts: RasterOptio
         page.destroy();
       }
     }
+    progress(0, 1, 'save');
     // MuPDF stores the pictures losslessly (Flate), so text edges stay sharp.
     return new Uint8Array(out.saveToBuffer({ garbage: 'compact', compress: true }).asUint8Array());
   } finally {

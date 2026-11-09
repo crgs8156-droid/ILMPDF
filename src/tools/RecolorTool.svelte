@@ -36,7 +36,7 @@
       const out =
         mode === 'overlay'
           ? await runPdfJob({ op: 'recolorOverlay', file: copyBytes(file.bytes), opts: { effect, pages } }, { signal })
-          : await runMupdfJob({ op: 'recolorRaster', file: copyBytes(file.bytes), opts: { effect, dpi: Number(dpi) as RasterDpi, pages } }, { signal });
+          : await runMupdfJob({ op: 'recolorRaster', file: copyBytes(file.bytes), opts: { effect, dpi: Number(dpi) as RasterDpi, pages } }, { signal, onProgress: job.track });
       const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, effect === 'greyscale' ? '-greyscale' : '-inverted'));
       const count = pages.length || file.pages;
