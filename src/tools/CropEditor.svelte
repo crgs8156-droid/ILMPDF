@@ -8,6 +8,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { CropBox } from '../engines/pdflib-ops';
@@ -88,9 +89,9 @@
   function crop() {
     const pages = scope === 'all' ? [] : [pageIndex];
     const chosen = { ...box };
-    job.run(async () => {
-      const out = await runPdfJob({ op: 'crop', file: copyBytes(initial.bytes), box: chosen, pages });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runPdfJob({ op: 'crop', file: copyBytes(initial.bytes), box: chosen, pages }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(initial.name, '-cropped'));
       return `Saved a cropped copy (${scope === 'all' ? 'every page' : `page ${pageIndex + 1}`}).${note}`;
     });
@@ -142,6 +143,7 @@
   <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button type="button" disabled={job.busy} onclick={crop} data-testid="run">{job.busy ? 'Cropping…' : 'Crop PDF'}</button>
+    <RunStatus run={job} />
   </div>
 </div>
 <Notice messages={job.errors} />

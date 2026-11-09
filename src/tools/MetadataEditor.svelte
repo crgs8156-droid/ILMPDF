@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import { EDITABLE_KEYS, MAX_FIELD_LENGTH, type EditableKey } from '../engines/metadata-edit';
@@ -35,8 +36,8 @@
 
   // Read the details once, when this file is shown.
   onMount(() => {
-    reading.run(async () => {
-      const out = await runPdfJob({ op: 'readMetadata', file: copyBytes(file.bytes) });
+    reading.run(async (signal) => {
+      const out = await runPdfJob({ op: 'readMetadata', file: copyBytes(file.bytes) }, { signal });
       meta = out.meta ?? {};
       for (const key of EDITABLE_KEYS) values[key] = meta[key] ?? '';
     });
@@ -44,18 +45,18 @@
 
   function save() {
     const edit = { values: { ...values }, touchModified };
-    job.run(async () => {
-      const out = await runPdfJob({ op: 'editMetadata', file: copyBytes(file.bytes), edit });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runPdfJob({ op: 'editMetadata', file: copyBytes(file.bytes), edit }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-edited'));
       return `Saved a copy with the new details.${note}`;
     });
   }
 
   function strip() {
-    job.run(async () => {
-      const out = await runPdfJob({ op: 'stripMetadata', file: copyBytes(file.bytes) });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runPdfJob({ op: 'stripMetadata', file: copyBytes(file.bytes) }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-clean'));
       return `Saved a copy with the metadata removed.${note}`;
     });
@@ -98,6 +99,7 @@
     <div class="actions">
       <button type="submit" disabled={job.busy} data-testid="meta-save">{job.busy ? 'Working…' : 'Save changes'}</button>
       <button type="button" class="quiet" disabled={job.busy} onclick={strip} data-testid="run">Remove all metadata</button>
+      <RunStatus run={job} />
     </div>
   </form>
   <Notice messages={job.errors} />

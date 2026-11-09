@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
@@ -24,15 +25,15 @@
 
   function protect(file: PdfFile) {
     const typed = password;
-    job.run(async () => {
+    job.run(async (signal) => {
       // Cleaning has to happen before the password goes on: a locked file
       // can't be opened to clean it.
-      const { files: [source], note } = await cleanIf(alsoClean, [copyBytes(file.bytes)]);
+      const { files: [source], note } = await cleanIf(alsoClean, [copyBytes(file.bytes)], signal);
       const out = await runMupdfJob({
         op: 'protect',
         file: source!,
         opts: { password: typed, allowPrint, allowCopy, allowEdit },
-      });
+      }, { signal });
       password = '';
       confirm = '';
       saveBytes(out.files![0]!, safeFileName(file.name, '-protected'));
@@ -75,6 +76,7 @@
       <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button type="submit" disabled={job.busy || !ready} data-testid="run">{job.busy ? 'Protecting…' : 'Protect PDF'}</button>
+        <RunStatus run={job} />
       </div>
     </form>
     <Notice messages={job.errors} />

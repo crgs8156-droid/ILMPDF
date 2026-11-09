@@ -5,6 +5,7 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { PdfInfo } from '../engines/mupdf-ops';
@@ -31,6 +32,7 @@
     if (!hasPdfHeader(bytes.subarray(0, 1024))) return void (errors = [`${picked.name}: Not a real PDF (header missing)`]);
     loading = true;
     try {
+      // no-cancel: a quick check when the file is chosen; it saves nothing.
       const { info } = await runMupdfJob({ op: 'inspect', file: copyBytes(bytes) });
       if (!info?.encrypted) errors = [`${picked.name}: This PDF isn't password-protected, so there is nothing to unlock.`];
       else file = { name: picked.name, size: picked.size, bytes, info };
@@ -44,9 +46,9 @@
   function unlock(f: Locked) {
     const typed = password;
     password = '';
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'unlock', file: copyBytes(f.bytes), password: typed });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'unlock', file: copyBytes(f.bytes), password: typed }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(f.name, '-unlocked'));
       return `Saved an unlocked copy. The original file is unchanged.${note}`;
     });
@@ -93,6 +95,7 @@
     <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="submit" disabled={job.busy || !password} data-testid="run">{job.busy ? 'Unlocking…' : 'Unlock PDF'}</button>
+      <RunStatus run={job} />
     </div>
   </form>
   <Notice messages={job.errors} />

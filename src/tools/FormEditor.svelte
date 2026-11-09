@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { FormField, FormValues } from '../engines/mupdf-ops';
@@ -23,8 +24,8 @@
 
   // Read the fields once, when this file is shown.
   onMount(() => {
-    reading.run(async () => {
-      const out = await runMupdfJob({ op: 'readForm', file: copyBytes(file.bytes) });
+    reading.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'readForm', file: copyBytes(file.bytes) }, { signal });
       fields = out.fields ?? [];
     });
   });
@@ -35,9 +36,9 @@
       .filter((f) => !f.readOnly)
       .map((f) => [f.name, f.kind === 'checkbox' ? f.checked : f.value]);
     const flat = flatten;
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'fillForm', file: copyBytes(file.bytes), values, flatten: flat });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'fillForm', file: copyBytes(file.bytes), values, flatten: flat }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, flat ? '-flattened' : '-filled'));
       return flat
         ? `Saved a flattened copy: the answers are now part of the pages and can no longer be edited.${note}`
@@ -103,6 +104,7 @@
     <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="submit" disabled={job.busy} data-testid="run">{job.busy ? 'Saving…' : 'Save filled PDF'}</button>
+      <RunStatus run={job} />
     </div>
   </form>
   <Notice messages={job.errors} />

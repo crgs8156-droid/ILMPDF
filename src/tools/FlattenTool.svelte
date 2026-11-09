@@ -5,6 +5,7 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
@@ -36,9 +37,9 @@
   const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 
   function run(f: Picked) {
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'flatten', file: copyBytes(f.bytes), opts: { fields, annotations } });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'flatten', file: copyBytes(f.bytes), opts: { fields, annotations } }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(f.name, '-flattened'));
       const counts = {
         fields: Number(out.meta?.['fields'] ?? 0),
@@ -89,6 +90,7 @@
       <button type="button" disabled={job.busy || (!fields && !annotations)} onclick={() => file && run(file)} data-testid="run">
         {job.busy ? 'Flattening…' : 'Flatten PDF'}
       </button>
+      <RunStatus run={job} />
     </div>
   </div>
   <Notice messages={job.errors} />

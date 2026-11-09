@@ -9,6 +9,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import { MAX_ANNOTATIONS, MAX_INK_POINTS } from '../core/limits';
@@ -424,9 +425,9 @@
   function save() {
     // Plain copies: the worker can't receive Svelte's reactive objects.
     const list: NewAnnotation[] = items.map(({ id: _id, ...rest }) => $state.snapshot(rest));
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'annotate', file: copyBytes(initial.bytes), items: list });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'annotate', file: copyBytes(initial.bytes), items: list }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(initial.name, '-annotated'));
       return `Saved an annotated copy with ${list.length} ${list.length === 1 ? 'annotation' : 'annotations'}.${note}`;
     });
@@ -623,6 +624,7 @@
     <button type="button" disabled={job.busy || items.length === 0} onclick={save} data-testid="run">
       {job.busy ? 'Saving…' : 'Save annotated PDF'}
     </button>
+    <RunStatus run={job} />
   </div>
 </div>
 <Notice messages={job.errors} />
