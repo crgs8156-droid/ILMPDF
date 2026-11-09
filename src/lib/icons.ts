@@ -51,6 +51,7 @@ export const UI_ICONS = {
   clock: 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 7v5l3 2',
   folder: 'M4 6h6l2 2h8v11H4zM4 10h16',
   saved: 'M12 3v12M7 10l5 5 5-5M4 17v3h16v-3',
+  search: 'M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.6-4.6',
 } as const;
 
 /** The CSS class that gives a tool group its colour (see app.css). */

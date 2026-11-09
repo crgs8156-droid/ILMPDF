@@ -8,8 +8,8 @@
   import { shelf } from '../core/shelf.svelte';
   import type { PageId } from '../core/router';
 
-  type Props = { here: string | null; onDashboard: boolean; page: PageId | null; onClose: () => void };
-  let { here, onDashboard, page, onClose }: Props = $props();
+  type Props = { here: string | null; onDashboard: boolean; page: PageId | null; onClose: () => void; onSearch: () => void };
+  let { here, onDashboard, page, onClose, onSearch }: Props = $props();
 
   const FILE_PAGES: { id: PageId; label: string; icon: string; count: () => number }[] = [
     { id: 'recent', label: 'Recent files', icon: UI_ICONS.clock, count: () => shelf.recent.length },
@@ -40,6 +40,13 @@
       <Icon d={UI_ICONS.close} size={18} />
     </button>
   </div>
+
+  <!-- Looks like a search field; opens the ⌘K search box (lib/CommandPalette.svelte). -->
+  <button type="button" class="search" aria-haspopup="dialog" aria-keyshortcuts="Meta+K /" onclick={onSearch} data-testid="side-search">
+    <Icon d={UI_ICONS.search} size={16} />
+    <span>Search tools</span>
+    <kbd>⌘K</kbd>
+  </button>
 
   <nav class="items">
     <a href="#/" class="item" aria-current={onDashboard ? 'page' : undefined} onclick={onClose} data-testid="side-dashboard">
@@ -136,6 +143,35 @@
     border-radius: 8px;
     background: var(--accent);
     color: var(--on-accent);
+  }
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 9px;
+    background: var(--bg);
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+  }
+  .search:hover {
+    border-color: var(--accent);
+    filter: none;
+  }
+  .search span {
+    flex: 1;
+  }
+  .search kbd {
+    padding: 0 5px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    background: var(--surface-2);
+    font: inherit;
+    font-size: 11px;
   }
   .close {
     display: none;

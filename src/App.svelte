@@ -3,6 +3,7 @@
   import SecurityBadge from './lib/SecurityBadge.svelte';
   import DropWheel from './lib/DropWheel.svelte';
   import Sidebar from './lib/Sidebar.svelte';
+  import CommandPalette from './lib/CommandPalette.svelte';
   import ThemeSwitch from './lib/ThemeSwitch.svelte';
   import Icon from './lib/Icon.svelte';
   import { TOOL_ICONS, UI_ICONS, groupClass } from './lib/icons';
@@ -68,17 +69,46 @@
     nav.go({ kind: 'home' });
   }
 
+  // The ⌘K tool search box. Opening a tool from it works like clicking the
+  // tool's card or sidebar link.
+  let palette = $state<ReturnType<typeof CommandPalette>>();
+  function openSearch() {
+    menuOpen = false;
+    void palette?.show();
+  }
+  function openTool(id: string) {
+    if (nav.route.kind === 'home') leaveHome(id);
+    nav.go({ kind: 'tool', id, file: false });
+  }
+
+  function isTyping(target: EventTarget | null): boolean {
+    return target instanceof Element && !!target.closest('input, textarea, select, [contenteditable="true"], dialog');
+  }
+
+  // ⌘K (Ctrl+K on other keyboards) opens tool search from anywhere; so does
+  // "/" when you are not typing in a box.
   // Esc closes the menu drawer if it is open. Otherwise, on a tool's file
   // picker it goes back to the dashboard. It does nothing once a PDF is
   // loaded, so a stray Esc can't throw away your work.
   function onKey(e: KeyboardEvent) {
+    if (e.defaultPrevented || e.isComposing) return;
+    const k = e.key.toLowerCase();
+    if (k === 'k' && (e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey) {
+      e.preventDefault();
+      openSearch();
+      return;
+    }
+    if (e.key === '/' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target)) {
+      e.preventDefault();
+      openSearch();
+      return;
+    }
     if (e.key !== 'Escape' || e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return;
     if (menuOpen) {
       menuOpen = false;
       return;
     }
-    const target = e.target as HTMLElement | null;
-    if (target?.closest('input, textarea, select, [contenteditable="true"], dialog')) return;
+    if (isTyping(e.target)) return;
     if (nav.route.kind === 'missing' || (nav.route.kind === 'tool' && !nav.route.file)) nav.up();
   }
 </script>
@@ -87,7 +117,7 @@
 
 <div class="shell" class:menu-open={menuOpen}>
   <div class="side-wrap">
-    <Sidebar here={current?.id ?? null} onDashboard={nav.route.kind === 'home'} {page} onClose={() => (menuOpen = false)} />
+    <Sidebar here={current?.id ?? null} onDashboard={nav.route.kind === 'home'} {page} onClose={() => (menuOpen = false)} onSearch={openSearch} />
   </div>
   <button type="button" class="scrim" aria-label="Close menu" tabindex="-1" onclick={() => (menuOpen = false)}></button>
 
@@ -176,6 +206,8 @@
     <footer class="foot">ILMPDF runs offline: nothing you open here is uploaded or kept.</footer>
   </div>
 </div>
+
+<CommandPalette bind:this={palette} tools={TOOLS} onPick={openTool} />
 
 <!-- Only on the home page: each tool has its own drop area. -->
 <DropWheel enabled={nav.route.kind === 'home'} />
