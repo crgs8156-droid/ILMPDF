@@ -5,6 +5,7 @@
   import { saveBytes } from '../core/save';
   import { checkFileMeta, formatBytes, hasPdfHeader, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
@@ -31,9 +32,9 @@
   }
 
   function repair(f: Picked) {
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'repair', file: copyBytes(f.bytes) });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'repair', file: copyBytes(f.bytes) }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(f.name, '-repaired'));
       const pages = `${out.count} page${out.count === 1 ? '' : 's'}`;
       return out.repaired
@@ -67,6 +68,7 @@
       <button type="button" disabled={job.busy} onclick={() => file && repair(file)} data-testid="run">
         {job.busy ? 'Repairing…' : 'Repair PDF'}
       </button>
+      <RunStatus run={job} />
     </div>
   </div>
   <Notice messages={job.errors} />

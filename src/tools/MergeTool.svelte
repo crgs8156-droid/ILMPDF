@@ -7,6 +7,7 @@
   import { formatBytes } from '../core/validate';
   import { MAX_FILES } from '../core/limits';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
@@ -26,9 +27,9 @@
   }
 
   function merge() {
-    job.run(async () => {
-      const out = await runPdfJob({ op: 'merge', files: files.map((f) => copyBytes(f.bytes)) });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runPdfJob({ op: 'merge', files: files.map((f) => copyBytes(f.bytes)) }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, 'merged.pdf');
       return `Merged ${files.length} files. Saved merged.pdf.${note}`;
     });
@@ -59,6 +60,7 @@
     <button disabled={files.length < 2 || job.busy} onclick={merge} data-testid="run">
       {job.busy ? 'Merging…' : `Merge ${files.length} PDFs`}
     </button>
+    <RunStatus run={job} />
     {#if files.length < 2}<span class="muted">Add at least two PDFs.</span>{/if}
   </div>
 {/if}

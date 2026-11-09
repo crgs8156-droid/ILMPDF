@@ -10,6 +10,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { ImageInput, SignaturePlacement } from '../engines/pdflib-ops';
@@ -119,9 +120,9 @@
     const pages = everyPage ? Array.from({ length: initial.pages }, (_, i) => i) : [pageIndex];
     const placements: SignaturePlacement[] = pages.map((page) => ({ page, x, y, width }));
     const image: ImageInput = { bytes: copyBytes(signature.bytes), kind: signature.kind };
-    job.run(async () => {
-      const out = await runPdfJob({ op: 'sign', file: copyBytes(initial.bytes), image, placements });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    job.run(async (signal) => {
+      const out = await runPdfJob({ op: 'sign', file: copyBytes(initial.bytes), image, placements }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(initial.name, '-signed'));
       return `Saved a signed copy (${pages.length === 1 ? `page ${pages[0]! + 1}` : `${pages.length} pages`}).${note}`;
     });
@@ -204,6 +205,7 @@
     <RemoveScriptsOption bind:checked={alsoClean} />
     <div class="actions">
       <button type="button" disabled={job.busy} onclick={sign} data-testid="run">{job.busy ? 'Signing…' : 'Sign PDF'}</button>
+      <RunStatus run={job} />
     </div>
   </div>
   <Notice messages={job.errors} />

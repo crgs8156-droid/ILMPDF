@@ -7,6 +7,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
 
@@ -17,7 +18,7 @@
   let alsoClean = $state(false);
 
   function split(file: PdfFile) {
-    job.run(async () => {
+    job.run(async (signal) => {
       let groups: number[][];
       if (mode === 'every') {
         groups = everyNPages(file.pages, size);
@@ -26,8 +27,8 @@
         if (!parsed.ok) throw new Error(parsed.error);
         groups = parsed.groups;
       }
-      const out = await runPdfJob({ op: 'pick', file: copyBytes(file.bytes), groups });
-      const { files, note } = await cleanIf(alsoClean, out.files!);
+      const out = await runPdfJob({ op: 'pick', file: copyBytes(file.bytes), groups }, { signal });
+      const { files, note } = await cleanIf(alsoClean, out.files!, signal);
       files.forEach((bytes, i) => saveBytes(bytes, safeFileName(file.name, `-part-${i + 1}`)));
       return `Created ${files.length} PDF${files.length === 1 ? '' : 's'}.${note}`;
     });
@@ -57,6 +58,7 @@
       <RemoveScriptsOption bind:checked={alsoClean} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => split(file)} data-testid="run">{job.busy ? 'Splitting…' : 'Split PDF'}</button>
+        <RunStatus run={job} />
       </div>
     </div>
     <Notice messages={job.errors} />
