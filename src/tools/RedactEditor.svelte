@@ -8,6 +8,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { RedactBox } from '../engines/mupdf-ops';
@@ -107,8 +108,8 @@
 
   function find() {
     const text = search;
-    finder.run(async () => {
-      const out = await runMupdfJob({ op: 'findText', file: copyBytes(initial.bytes), text });
+    finder.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'findText', file: copyBytes(initial.bytes), text }, { signal });
       const found = out.boxes ?? [];
       if (found.length === 0) return `"${text.trim()}" was not found. Scanned pages (pictures of text) can't be searched.`;
       const term = text.trim();
@@ -128,9 +129,9 @@
     const options = { stripMetadata, removeAllAttachments, phrases };
     const clean = alsoClean;
     unchecked = [];
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'redact', file: copyBytes(initial.bytes), boxes: chosen, options });
-      const { files: [saved], note } = await cleanIf(clean, out.files!);
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'redact', file: copyBytes(initial.bytes), boxes: chosen, options }, { signal });
+      const { files: [saved], note } = await cleanIf(clean, out.files!, signal);
       saveBytes(saved!, safeFileName(initial.name, '-redacted'));
       const count = (key: string) => Number(out.meta?.[key] ?? 0);
       const extras = [
@@ -161,6 +162,7 @@
   >
     <input type="search" bind:value={search} maxlength="200" placeholder="Find text, e.g. a name or account number" aria-label="Text to find" data-testid="find-text" />
     <button type="submit" class="quiet" disabled={finder.busy || !search.trim()} data-testid="find">{finder.busy ? 'Finding…' : 'Mark all'}</button>
+    <RunStatus run={finder} />
   </form>
   <Notice messages={finder.errors} />
   <Notice kind="ok" messages={finder.done} />
@@ -236,6 +238,7 @@
     <button type="button" disabled={job.busy || boxes.length === 0} onclick={apply} data-testid="run">
       {job.busy ? 'Redacting…' : 'Redact and save'}
     </button>
+    <RunStatus run={job} />
     {#if boxes.length > 0}
       <button type="button" class="quiet" onclick={() => (boxes = [])}>Unmark all</button>
     {/if}

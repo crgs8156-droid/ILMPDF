@@ -45,15 +45,20 @@ export type BatchResult = { source: string; output?: ZipEntry; note?: string; er
  * remark for the report. `bytes` must be a private copy: it is moved into
  * the worker.
  */
-async function processOne(action: BatchAction, bytes: Uint8Array, alsoClean: boolean): Promise<{ bytes: Uint8Array; note: string }> {
+async function processOne(
+  action: BatchAction,
+  bytes: Uint8Array,
+  alsoClean: boolean,
+  signal?: AbortSignal,
+): Promise<{ bytes: Uint8Array; note: string }> {
   const one = async (files: Uint8Array[] | undefined) => {
-    const { files: [out], note } = await cleanIf(alsoClean, files!);
+    const { files: [out], note } = await cleanIf(alsoClean, files!, signal);
     return { bytes: out!, note: note.trim() };
   };
   switch (action.kind) {
     case 'compress': {
       const keep = bytes.slice();
-      const out = await runMupdfJob({ op: 'compress', file: bytes, level: action.level });
+      const out = await runMupdfJob({ op: 'compress', file: bytes, level: action.level }, { signal });
       const { before, after } = out.sizes!;
       // Like the Compress tool, never hand back a bigger file: keep the original instead.
       if (after >= before) {
@@ -64,30 +69,30 @@ async function processOne(action: BatchAction, bytes: Uint8Array, alsoClean: boo
       return { bytes: r.bytes, note: `${pct(before, after)}% smaller. ${r.note}`.trim() };
     }
     case 'watermark':
-      return one((await runPdfJob({ op: 'watermark', file: bytes, opts: action.opts })).files);
+      return one((await runPdfJob({ op: 'watermark', file: bytes, opts: action.opts }, { signal })).files);
     case 'pageNumbers':
-      return one((await runPdfJob({ op: 'pageNumbers', file: bytes, opts: action.opts })).files);
+      return one((await runPdfJob({ op: 'pageNumbers', file: bytes, opts: action.opts }, { signal })).files);
     case 'stripMetadata':
-      return one((await runPdfJob({ op: 'stripMetadata', file: bytes })).files);
+      return one((await runPdfJob({ op: 'stripMetadata', file: bytes }, { signal })).files);
     case 'repair': {
-      const out = await runMupdfJob({ op: 'repair', file: bytes });
+      const out = await runMupdfJob({ op: 'repair', file: bytes }, { signal });
       const r = await one(out.files);
       return { bytes: r.bytes, note: `${out.repaired ? 'Repaired.' : 'No damage found; rewritten cleanly.'} ${r.note}`.trim() };
     }
     case 'sanitize': {
       const keep = bytes.slice();
-      const { files: [out], removed } = await removeScripts([bytes]);
+      const { files: [out], removed } = await removeScripts([bytes], signal);
       const found = describeRemoved(removed);
       return { bytes: out ?? keep, note: found ? `Removed ${found}.` : 'Nothing to remove.' };
     }
     case 'protect': {
       // Clean first: a locked file can't be opened to clean it.
-      const { files: [source], note } = await cleanIf(alsoClean, [bytes]);
-      const out = await runMupdfJob({ op: 'protect', file: source!, opts: action.opts });
+      const { files: [source], note } = await cleanIf(alsoClean, [bytes], signal);
+      const out = await runMupdfJob({ op: 'protect', file: source!, opts: action.opts }, { signal });
       return { bytes: out.files![0]!, note: note.trim() };
     }
     case 'unlock':
-      return one((await runMupdfJob({ op: 'unlock', file: bytes, password: action.password })).files);
+      return one((await runMupdfJob({ op: 'unlock', file: bytes, password: action.password }, { signal })).files);
   }
 }
 
@@ -95,22 +100,27 @@ const pct = (before: number, after: number) => Math.round((1 - after / before) *
 
 /**
  * Processes every file. A file that fails is recorded with its reason and
- * the batch carries on. `onStep` reports progress after each file.
+ * the batch carries on. `onStep` reports progress after each file. Aborting
+ * `signal` (Cancel) stops the batch: the whole run fails, so no ZIP is made.
  */
 export async function runBatch(
   files: BatchInput[],
   action: BatchAction,
   alsoClean: boolean,
   onStep: (index: number, result: BatchResult) => void = () => {},
+  signal?: AbortSignal,
 ): Promise<BatchResult[]> {
   const results: BatchResult[] = [];
   const suffix = BATCH_ACTIONS[action.kind].suffix;
   for (const [i, file] of files.entries()) {
     let result: BatchResult;
+    signal?.throwIfAborted();
     try {
-      const { bytes, note } = await processOne(action, copyBytes(file.bytes), alsoClean && action.kind !== 'sanitize');
+      const { bytes, note } = await processOne(action, copyBytes(file.bytes), alsoClean && action.kind !== 'sanitize', signal);
       result = { source: file.name, output: { name: safeFileName(file.name, suffix), bytes }, note };
     } catch (err) {
+      // A cancelled job is not one failed file: stop the whole batch.
+      signal?.throwIfAborted();
       result = { source: file.name, error: err instanceof Error ? err.message : 'Something went wrong.' };
     }
     results.push(result);

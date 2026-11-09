@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
 
   let markPages = $state(true);
   // The pages of the last run, kept only in memory so they can be saved again.
@@ -25,8 +26,8 @@
 
   function extract(file: PdfFile) {
     result = null;
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'extractText', file: copyBytes(file.bytes) });
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'extractText', file: copyBytes(file.bytes) }, { signal });
       const { pages, chars } = out.text!;
       if (chars === 0) {
         return 'No text was found. This PDF is probably scanned (pictures of pages), which needs text recognition (OCR) to read.';
@@ -53,6 +54,7 @@
         <button type="button" disabled={job.busy} onclick={() => extract(file)} data-testid="run">
           {job.busy ? 'Reading…' : 'Extract text'}
         </button>
+        <RunStatus run={job} />
       </div>
     </div>
     <Notice messages={job.errors} />

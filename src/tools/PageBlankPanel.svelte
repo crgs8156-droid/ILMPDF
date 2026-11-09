@@ -9,6 +9,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import { closePdf, openPdf } from '../engines/pdfjs';
   import { findBlankPages, type Sensitivity } from '../engines/blank-pages';
@@ -37,7 +38,7 @@
     found = null;
     job.errors = [];
     job.done = [];
-    scan.run(async () => {
+    scan.run(async (signal) => {
       if (!doc) {
         const opened = await openPdf(file.bytes);
         if (closed) {
@@ -47,7 +48,11 @@
         doc = opened;
       }
       checked = 0;
-      const blank = await findBlankPages(doc, sensitivity, (n) => (checked = n));
+      const blank = await findBlankPages(doc, sensitivity, (n) => {
+        // Throwing here stops the page loop; ToolRun then shows "Cancelled".
+        signal.throwIfAborted();
+        checked = n;
+      });
       found = blank.map((index) => ({ index, remove: true }));
       if (blank.length === 0) return 'No blank pages found. Try "Also near-blank scans" if you expected some.';
       if (blank.length === file.pages) return 'Every page looks blank. Untick the pages you want to keep.';
@@ -55,13 +60,13 @@
   }
 
   function removeBlanks() {
-    job.run(async () => {
+    job.run(async (signal) => {
       const drop = new Set(found!.filter((f) => f.remove).map((f) => f.index));
       if (drop.size === file.pages) throw new Error('Keep at least one page: untick a page to keep it.');
       // Deleted from the original file, so its form, bookmarks, attached files
       // and details are kept.
-      const out = await runMupdfJob({ op: 'removePages', file: copyBytes(file.bytes), pages: [...drop] });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      const out = await runMupdfJob({ op: 'removePages', file: copyBytes(file.bytes), pages: [...drop] }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-no-blanks'));
       return `Removed ${drop.size} blank page${drop.size === 1 ? '' : 's'}; ${file.pages - drop.size} left.${note}`;
     });
@@ -82,6 +87,7 @@
     <button disabled={scan.busy || job.busy} onclick={findBlanks} data-testid="find-blank">
       {scan.busy ? `Checking page ${checked} of ${file.pages}…` : 'Find blank pages'}
     </button>
+    <RunStatus run={scan} />
   </div>
 </div>
 <Notice messages={scan.errors} />
@@ -102,6 +108,7 @@
     <button disabled={job.busy || removing === 0} onclick={removeBlanks} data-testid="run">
       {job.busy ? 'Working…' : `Remove ${removing} page${removing === 1 ? '' : 's'}`}
     </button>
+    <RunStatus run={job} />
   </div>
 {/if}
 <Notice messages={job.errors} />

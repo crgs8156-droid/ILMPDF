@@ -7,6 +7,7 @@
   import { inZip, saveBytes, saveFiles } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
   import { MAX_SPLIT_PARTS, partFileName, planSplit } from '../core/bookmarks';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
@@ -31,6 +32,7 @@
   // State changes only after the await: Svelte forbids changing state
   // while it is drawing the page.
   async function load(f: PdfFile) {
+    // no-cancel: a quick read when the file is chosen; it saves nothing.
     const out = await runMupdfJob({ op: 'readBookmarks', file: copyBytes(f.bytes) });
     file = f;
     splitLevel = 0;
@@ -41,9 +43,9 @@
   const plain = () => rows.map(({ title, page, level, open, target }) => ({ title, page, level, open, ...(target ? { target } : {}) }));
 
   function saveEdited(f: PdfFile) {
-    save.run(async () => {
-      const out = await runMupdfJob({ op: 'writeBookmarks', file: copyBytes(f.bytes), bookmarks: plain() });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+    save.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'writeBookmarks', file: copyBytes(f.bytes), bookmarks: plain() }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(f.name, '-bookmarks'));
       const n = rows.length;
       return n === 0 ? `Saved a copy with all bookmarks removed.${note}` : `Saved a copy with ${n} bookmark${n === 1 ? '' : 's'}.${note}`;
@@ -51,12 +53,12 @@
   }
 
   function splitByBookmarks(f: PdfFile) {
-    split.run(async () => {
+    split.run(async (signal) => {
       const plan = parts;
       if (plan.length === 0) throw new Error('No bookmark at this level points to a page, so there is nothing to split at.');
       if (plan.length > MAX_SPLIT_PARTS) throw new Error(`That would make ${plan.length} files. ILMPDF makes at most ${MAX_SPLIT_PARTS} at a time.`);
-      const out = await runPdfJob({ op: 'pick', file: copyBytes(f.bytes), groups: plan.map((p) => p.pages) });
-      const { files, note } = await cleanIf(alsoClean, out.files!);
+      const out = await runPdfJob({ op: 'pick', file: copyBytes(f.bytes), groups: plan.map((p) => p.pages) }, { signal });
+      const { files, note } = await cleanIf(alsoClean, out.files!, signal);
       const named = files.map((bytes, i) => ({ name: partFileName(f.name, i + 1, files.length, plan[i]!.title), bytes }));
       const zip = saveFiles(named, safeFileName(f.name, '-parts', '.zip'), asZip);
       return `Created ${files.length} PDF${files.length === 1 ? '' : 's'}${inZip(zip)}.${note}`;
@@ -81,6 +83,7 @@
             <button type="button" disabled={save.busy} onclick={() => saveEdited(f)} data-testid="run">
               {save.busy ? 'Saving…' : 'Save PDF with these bookmarks'}
             </button>
+            <RunStatus run={save} />
           </div>
         </div>
         <Notice messages={save.errors} />
@@ -109,6 +112,7 @@
             <button type="button" disabled={split.busy || parts.length === 0} onclick={() => splitByBookmarks(f)} data-testid="bm-split">
               {split.busy ? 'Splitting…' : 'Split PDF'}
             </button>
+            <RunStatus run={split} />
           </div>
         </div>
         <Notice messages={split.errors} />

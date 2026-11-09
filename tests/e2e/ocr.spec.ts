@@ -24,7 +24,7 @@ test('ocr: makes scanned pages searchable, skips the typed page, and stays offli
   expect(text[2]).toContain('Parcel');
   await expect(page.getByTestId('notice-ok')).toContainText('Made 2 pages searchable');
   await expect(page.getByTestId('notice-ok')).toContainText('Left 1 page that already had text');
-  await expect(page.getByTestId('ocr-progress')).toHaveCount(0);
+  await expect(page.getByTestId('progress')).toHaveCount(0);
   expect(offOrigin(requests)).toEqual([]);
 });
 
@@ -52,8 +52,10 @@ test('ocr: cancel stops the job and saves nothing', async ({ page }) => {
   let downloads = 0;
   page.on('download', () => downloads++);
   await page.getByTestId('run').click();
-  await page.getByTestId('ocr-cancel').click();
-  await expect(page.getByTestId('notice-error')).toContainText('OCR was cancelled');
+  await expect(page.getByTestId('progress')).toContainText('Reading page');
+  await page.getByTestId('cancel').click();
+  await expect(page.getByTestId('notice-info')).toContainText('Cancelled. Nothing was saved.');
+  await expect(page.getByTestId('notice-error')).toHaveCount(0);
   await expect(page.getByTestId('run')).toBeEnabled();
   expect(downloads).toBe(0);
 });
