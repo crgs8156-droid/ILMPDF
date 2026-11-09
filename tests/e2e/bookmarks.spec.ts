@@ -45,13 +45,16 @@ test('bookmarks: splits into one PDF per top-level bookmark', async ({ page }) =
   await addPdf(page, 'chapters.pdf', await get('38-bookmarks-chapters.pdf'));
   await expect(page.getByTestId('bm-split-summary')).toContainText('Makes 5 files');
   const parts = await collectDownloads(page, () => page.getByTestId('bm-split').click(), 5);
-  expect(parts.map((d) => d.suggestedFilename())).toEqual([
+  // Linux WebKit (CI on Ubuntu 26.04) turns spaces in download names into
+  // underscores; Safari on the Mac keeps them. Compare without that difference.
+  const sameName = (n: string) => n.replaceAll(' ', '_');
+  expect(parts.map((d) => sameName(d.suggestedFilename()))).toEqual([
     'chapters-1-Start.pdf',
     'chapters-2-Chapter 1_ Introduction.pdf',
     'chapters-3-Chapter 2_ Method.pdf',
     'chapters-4-Chapter 3_ Results.pdf',
     'chapters-5-Appendix.pdf',
-  ]);
+  ].map(sameName));
   const counts = await Promise.all(parts.map(async (d) => {
     const doc = mupdf.Document.openDocument(await bytesOf(d), 'application/pdf');
     const n = doc.countPages();
