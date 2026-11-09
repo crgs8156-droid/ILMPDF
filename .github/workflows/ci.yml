@@ -1,9 +1,32 @@
 name: CI
 
+# When CI runs:
+# - pull_request: when a PR is opened, gets new commits, is reopened, or a
+#   draft is marked "Ready for review". Drafts are skipped (see `if:` below).
+# - push to main: after each merge, to catch two PRs that clash.
+# - workflow_dispatch: a "Run workflow" button on the Actions tab.
+# - paths-ignore: changes that only touch docs or Markdown files skip CI.
+# Only `pull_request` is used for PRs, never its "target" variant (which runs
+# with write access): a PR from a fork runs with a read-only token and no
+# access to secrets. security:check enforces this.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
   push:
     branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+# A new push to the same PR cancels the run still going for its older commit.
+# Runs on main are never cancelled, so every merge gets a full result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Least privilege: CI can read the code and nothing else.
 permissions:
@@ -11,6 +34,7 @@ permissions:
 
 jobs:
   verify:
+    if: github.event_name != 'pull_request' || github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     # Normal runs take 6-9 minutes. The extra room covers days when GitHub's
     # Ubuntu package mirror is slow (on 2026-10-22 it stalled two runs at 20).
@@ -28,8 +52,22 @@ jobs:
       - run: npm ci
       - name: Dependency audit and registry signatures
         run: npm run audit:deps
+      # Keeps the downloaded WebKit and Chromium between runs. The key includes
+      # package-lock.json, so a Playwright upgrade downloads fresh browsers.
+      # The key also names the Ubuntu version: Playwright downloads a different
+      # WebKit build for each one, and ubuntu-latest moved from 24.04 to 26.04
+      # in late October 2026.
+      - name: Ubuntu version
+        id: os
+        run: echo "version=$(. /etc/os-release && echo "$VERSION_ID")" >> "$GITHUB_OUTPUT"
+      - name: Cache test browsers
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.os.outputs.version }}-${{ hashFiles('package-lock.json') }}
       - name: Install test browsers (WebKit = Safari's engine)
-        # Tries twice, because the Ubuntu package mirror sometimes stalls.
+        # With a cache hit this skips the downloads and only installs the
+        # Ubuntu system packages. Tries twice, because that mirror sometimes stalls.
         timeout-minutes: 30
         run: |
           for attempt in 1 2; do
