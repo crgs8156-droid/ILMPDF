@@ -12,10 +12,16 @@
   import { shelf } from './core/shelf.svelte';
   import FilesPage from './pages/FilesPage.svelte';
   import RecentList from './pages/RecentList.svelte';
+  import IdleBanner from './lib/IdleBanner.svelte';
+  import Notice from './lib/Notice.svelte';
+  import { idle } from './core/idle.svelte';
+  import { IDLE_CLEAR_MS } from './core/limits';
 
   // Where we are lives in the address hash (see core/router.ts), so Safari's
   // Back and Forward buttons, ⌘[ and swipe-back all work.
   onMount(() => nav.start(TOOLS.map((t) => t.id)));
+  // Auto-clear after 15 minutes with no use (core/idle.svelte.ts).
+  onMount(() => idle.start());
 
   const current = $derived.by(() => {
     const route = nav.route;
@@ -46,6 +52,7 @@
   $effect(() => {
     const key = pageKey;
     menuOpen = false;
+    if (key !== 'home') idle.cleared = false;
     void tick().then(() => {
       if (key === 'home') {
         scrollTo(0, homeScroll);
@@ -104,6 +111,7 @@
     </header>
 
     <main class="page">
+      <IdleBanner />
       {#if current && nav.route.kind === 'tool'}
         {@const ToolView = current.component}
         <section class="tool" data-testid="tool-{current.id}">
@@ -143,6 +151,11 @@
           <p>{TOOLS.length} tools that work entirely on this Mac. Files are never uploaded, and the network is switched off for this page.</p>
           <p class="tip" data-testid="wheel-tip">Tip: drag a PDF onto this page and drop it on a tool in the wheel that appears.</p>
         </section>
+        {#if idle.cleared}
+          <div data-testid="idle-cleared">
+            <Notice kind="info" messages={[`Files cleared for privacy after ${IDLE_CLEAR_MS / 60_000} minutes without use. Your originals and downloads are not touched.`]} />
+          </div>
+        {/if}
         {#if shelf.recent.length > 0}
           <div class="section-h">
             <h2>Recent files</h2>

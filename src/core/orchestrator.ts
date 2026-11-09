@@ -1,6 +1,22 @@
 import type { JobOutput, JobResult, MupdfJob, OcrJob, OcrProgressMessage, PdfJob } from './jobs';
 import { JOB_TIMEOUT_MS, OCR_PAGE_TIMEOUT_MS } from './limits';
 
+// Jobs running right now, and when the last one ended. Auto-clear
+// (core/idle.svelte.ts) never clears during a job, and counts a job
+// ending as use, so a long OCR doesn't clear the moment it finishes.
+let running = 0;
+let lastEnd = 0;
+export function jobActivity(): { running: number; lastEnd: number } {
+  return { running, lastEnd };
+}
+function tracked<T>(job: Promise<T>): Promise<T> {
+  running++;
+  return job.finally(() => {
+    running--;
+    lastEnd = Date.now();
+  });
+}
+
 // Each job gets a fresh worker that is terminated as soon as the job ends,
 // so a crash (or an exploit in a parser) dies with that one job.
 export type JobOptions = {
@@ -45,7 +61,7 @@ export function runOcrJob(job: OcrJob, opts: OcrRunOptions = {}): Promise<JobOut
   });
   const id = crypto.randomUUID();
 
-  return new Promise((resolve, reject) => {
+  return tracked(new Promise((resolve, reject) => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const finish = () => {
       clearTimeout(timer);
@@ -88,13 +104,13 @@ export function runOcrJob(job: OcrJob, opts: OcrRunOptions = {}): Promise<JobOut
     };
 
     worker.postMessage({ id, job }, [job.file.buffer as ArrayBuffer]);
-  });
+  }));
 }
 
 function runInWorker(worker: Worker, job: PdfJob | MupdfJob, signal?: AbortSignal): Promise<JobOutput> {
   const id = crypto.randomUUID();
 
-  return new Promise((resolve, reject) => {
+  return tracked(new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       finish();
       reject(new Error('This job took too long and was stopped.'));
@@ -128,7 +144,7 @@ function runInWorker(worker: Worker, job: PdfJob | MupdfJob, signal?: AbortSigna
     };
 
     worker.postMessage({ id, job }, transferables(job));
-  });
+  }));
 }
 
 // Every byte array in a job is a private copy, so it can be moved.
