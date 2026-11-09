@@ -40,3 +40,20 @@ export function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
   return true;
 }
+
+/** A saved result that is a PDF (so it can be opened in another tool). ZIPs, images and text are not. */
+export function isPdfResult(s: { name: string; blob: Blob }): boolean {
+  return s.blob.type === 'application/pdf' && /\.pdf$/i.test(s.name);
+}
+
+/**
+ * The newest PDF that `tool` saved at or after `since` (the moment the tool
+ * opened), for "Continue with this file". The list is newest first.
+ */
+export function latestPdfFrom<T extends { name: string; blob: Blob; tool: string | null; at: number }>(
+  saved: readonly T[],
+  tool: string,
+  since: number,
+): T | undefined {
+  return saved.find((s) => s.tool === tool && s.at >= since && isPdfResult(s));
+}
