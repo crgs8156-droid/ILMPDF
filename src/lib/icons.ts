@@ -48,6 +48,7 @@ export const UI_ICONS = {
   alert: 'M12 3l9 16H3zM12 10v4M12 17h.01',
   info: 'M12 3a9 9 0 100 18 9 9 0 000-18zM12 11v5M12 8h.01',
   doc: 'M7 3h7l5 5v13H7zM14 3v5h5',
+  search: 'M10.5 4a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM20 20l-4.6-4.6',
 } as const;
 
 /** The CSS class that gives a tool group its colour (see app.css). */
