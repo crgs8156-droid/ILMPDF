@@ -14,3 +14,7 @@ export const MAX_IMAGES = 500; // per Extract images job
 // 100,000 x 100,000 pixels, which froze Safari's page. 100 megapixels is far
 // above any real scan (an A3 page at 600 dpi is about 70 megapixels).
 export const MAX_RENDER_IMAGE_PIXELS = 100_000_000;
+// Auto-clear: after this long with no use, every file and result is forgotten.
+// One fixed time, because a setting would need browser storage (rule 7).
+export const IDLE_CLEAR_MS = 15 * 60_000;
+export const IDLE_WARN_MS = 60_000; // the "Keep my files" banner shows this long before
