@@ -18,6 +18,49 @@ test('a PDF opened in one tool can be reused in another without choosing it agai
   await expect(page).toHaveURL(/#\/page-numbers\/file$/);
 });
 
+test('continue with this file: a result opens in the next tool without downloading it again', async ({ page }) => {
+  await page.goto('/#/page-numbers');
+  await expect(page.getByTestId('continue-with')).toHaveCount(0);
+  await addPdf(page, 'doc.pdf', makePdf(3));
+  await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+
+  const line = page.getByTestId('continue-with');
+  await expect(line).toContainText('doc-numbered.pdf');
+  // The tool that is already open is not offered.
+  await expect(line.locator('option[value="page-numbers"]')).toHaveCount(0);
+  await line.getByTestId('continue-in').selectOption('watermark');
+
+  await expect(page.getByTestId('tool-watermark')).toBeVisible();
+  await expect(page.getByTestId('loaded-file')).toContainText('doc-numbered.pdf');
+  await expect(page).toHaveURL(/#\/watermark\/file$/);
+  // A new tool starts without an offer: nothing was saved here yet.
+  await expect(page.getByTestId('continue-with')).toHaveCount(0);
+
+  // The result is now one of Your files too.
+  await page.getByTestId('side-files').click();
+  await expect(page.getByTestId('files-list')).toContainText('doc-numbered.pdf');
+  await expect(page.getByTestId('files-list')).toContainText('3 pages');
+});
+
+test('a saved PDF can be opened in a tool from Saved files; ZIPs cannot', async ({ page }) => {
+  await page.goto('/#/split');
+  await addPdf(page, 'two.pdf', makePdf(2));
+  await page.getByTestId('split-mode').selectOption('every');
+  await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+  await page.goto('/#/page-numbers');
+  await addPdf(page, 'doc.pdf', makePdf(2));
+  await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+
+  await page.getByTestId('side-saved').click();
+  const rows = page.getByTestId('saved-list').getByTestId('file-row');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.first().getByTestId('saved-open-in')).toHaveCount(1);
+  await expect(rows.nth(1).getByTestId('saved-open-in')).toHaveCount(0);
+  await rows.first().getByTestId('saved-open-in').selectOption('compress');
+  await expect(page.getByTestId('tool-compress')).toBeVisible();
+  await expect(page.getByTestId('loaded-file')).toContainText('doc-numbered.pdf');
+});
+
 test('the file picker offers your files, and Recent files lists each use', async ({ page }) => {
   await page.goto('/#/compress');
   await addPdf(page, 'a.pdf', makePdf(1));
@@ -75,6 +118,16 @@ test('Clear all files asks first, then forgets everything', async ({ page }) => 
   await expect(page.getByTestId('files-list')).toHaveCount(0);
   await expect(page.getByTestId('side-files')).toContainText('0');
   await expect(page.getByTestId('clear-all')).toBeDisabled();
+});
+
+test('Clear all files also removes the Continue offer', async ({ page }) => {
+  await page.goto('/#/page-numbers');
+  await addPdf(page, 'doc.pdf', makePdf(1));
+  await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+  await expect(page.getByTestId('continue-with')).toBeVisible();
+  await page.getByTestId('clear-all').click();
+  await page.getByTestId('clear-yes').click();
+  await expect(page.getByTestId('continue-with')).toHaveCount(0);
 });
 
 test('the dashboard shows recent files once there are some', async ({ page }) => {

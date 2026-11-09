@@ -7,7 +7,8 @@
   import Notice from '../lib/Notice.svelte';
   import { shelf } from '../core/shelf.svelte';
   import { download } from '../core/save';
-  import { timeAgo } from '../core/shelf-rules';
+  import { isPdfResult, timeAgo } from '../core/shelf-rules';
+  import { continueWith } from '../core/files';
   import { formatBytes } from '../core/validate';
   import { PAGES, type PageId } from '../core/router';
   import { TOOLS } from '../tools/registry';
@@ -16,6 +17,12 @@
   type Props = { page: PageId; heading?: HTMLElement | undefined };
   let { page, heading = $bindable() }: Props = $props();
   const clock = useClock();
+  let errors = $state<string[]>([]);
+
+  async function openSaved(id: number, tool: string) {
+    const why = await continueWith(id, tool);
+    errors = why ? [why] : [];
+  }
   const toolName = (id: string | null) => TOOLS.find((t) => t.id === id)?.name ?? 'ILMPDF';
   const INTRO: Record<PageId, string> = {
     recent: 'What you opened in this tab, newest first. Carry on in the same tool, or open the file in another one.',
@@ -40,7 +47,7 @@
         {#each shelf.files as f (f.id)}
           <FileRow name={f.name} detail="{f.pages} page{f.pages === 1 ? '' : 's'} · {formatBytes(f.size)} · added {timeAgo(f.added, clock.now)}">
             {#snippet actions()}
-              <OpenIn fileId={f.id} name={f.name} />
+              <OpenIn name={f.name} onPick={(tool) => shelf.openIn(f.id, tool)} />
               <button type="button" class="quiet" onclick={() => shelf.removeFile(f.id)} data-testid="remove-file">Remove</button>
             {/snippet}
           </FileRow>
@@ -55,11 +62,13 @@
         <FileRow name={s.name} kind="out" detail="From {toolName(s.tool)} · {formatBytes(s.size)} · {timeAgo(s.at, clock.now)}">
           {#snippet actions()}
             <button type="button" onclick={() => download(s.blob, s.name)} data-testid="save-again">Save again</button>
+            {#if isPdfResult(s)}<OpenIn name={s.name} onPick={(tool) => openSaved(s.id, tool)} testid="saved-open-in" />{/if}
             <button type="button" class="quiet" onclick={() => shelf.removeSaved(s.id)} data-testid="remove-saved">Remove</button>
           {/snippet}
         </FileRow>
       {/each}
     </ul>
+    <Notice messages={errors} />
   {/if}
 
   <Notice kind="info" messages={['Kept in memory only, never on the disk. Closing or reloading this tab forgets the list, and so does “Clear all files” in the menu. Your original files are never changed.']} />

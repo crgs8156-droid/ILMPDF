@@ -17,25 +17,51 @@ export async function loadPdfs(files: File[], room = MAX_FILES): Promise<{ ok: P
       rejected.push({ name: file.name, reason: meta.reason });
       continue;
     }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    if (!hasPdfHeader(bytes.subarray(0, 1024))) {
-      rejected.push({ name: file.name, reason: 'Not a real PDF (header missing)' });
+    const checked = await checkPdf(file.name, new Uint8Array(await file.arrayBuffer()));
+    if ('reason' in checked) {
+      rejected.push(checked);
       continue;
     }
-    try {
-      const { count } = await runPdfJob({ op: 'pageCount', file: copyBytes(bytes) });
-      const pdf = { key: crypto.randomUUID(), name: file.name, size: file.size, bytes, pages: count ?? 0 };
-      ok.push(pdf);
-      // Also listed under Your files and Recent files (memory only, this tab).
-      shelf.add(pdf, tool);
-    } catch (err) {
-      rejected.push({ name: file.name, reason: err instanceof Error ? err.message : 'Could not read' });
-    }
+    ok.push(checked);
+    // Also listed under Your files and Recent files (memory only, this tab).
+    shelf.add(checked, tool);
   }
   for (const extra of files.slice(Math.max(0, room))) {
     rejected.push({ name: extra.name, reason: `Limit of ${MAX_FILES} files reached` });
   }
   return { ok, rejected };
+}
+
+/**
+ * The checks every PDF goes through before a tool sees it, whether you
+ * dropped it or it is a result you continue with: size limits, a real PDF
+ * header, and a page count read in a fresh worker (so a hostile file can
+ * only break that worker).
+ */
+export async function checkPdf(name: string, bytes: Uint8Array): Promise<PdfFile | Rejected> {
+  const meta = checkFileMeta(name, bytes.length);
+  if (!meta.ok) return { name, reason: meta.reason };
+  if (!hasPdfHeader(bytes.subarray(0, 1024))) return { name, reason: 'Not a real PDF (header missing)' };
+  try {
+    const { count } = await runPdfJob({ op: 'pageCount', file: copyBytes(bytes) });
+    return { key: crypto.randomUUID(), name, size: bytes.length, bytes, pages: count ?? 0 };
+  } catch (err) {
+    return { name, reason: err instanceof Error ? err.message : 'Could not read' };
+  }
+}
+
+/**
+ * "Continue with this file": puts a saved result on Your files and opens it
+ * in `tool`. Returns why it could not, or null when the tool is opening.
+ */
+export async function continueWith(savedId: number, tool: string): Promise<string | null> {
+  const saved = shelf.saved.find((s) => s.id === savedId);
+  if (!saved) return 'That result was cleared from memory. Save it again from the tool.';
+  const checked = await checkPdf(saved.name, new Uint8Array(await saved.blob.arrayBuffer()));
+  if ('reason' in checked) return `${checked.name}: ${checked.reason}`;
+  const entry = shelf.add(checked, null);
+  shelf.openIn(entry.id, tool);
+  return null;
 }
 
 export type ImageFile = { key: string; name: string; size: number; bytes: Uint8Array; kind: 'jpg' | 'png' };

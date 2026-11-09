@@ -30,7 +30,7 @@
           {#if ONE_PDF_TOOLS.includes(tool.id)}
             <button type="button" class="quiet" onclick={() => shelf.openIn(file.id, tool.id)} data-testid="again">{tool.name} again</button>
           {/if}
-          <OpenIn fileId={file.id} name={file.name} />
+          <OpenIn name={file.name} onPick={(tool) => shelf.openIn(file.id, tool)} />
         {/snippet}
       </FileRow>
     {/each}

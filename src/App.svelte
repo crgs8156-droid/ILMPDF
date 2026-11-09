@@ -14,6 +14,7 @@
   import FilesPage from './pages/FilesPage.svelte';
   import RecentList from './pages/RecentList.svelte';
   import IdleBanner from './lib/IdleBanner.svelte';
+  import ContinueWith from './lib/ContinueWith.svelte';
   import Notice from './lib/Notice.svelte';
   import { idle } from './core/idle.svelte';
   import { IDLE_CLEAR_MS } from './core/limits';
@@ -165,7 +166,7 @@
               <p>{current.blurb}</p>
             </div>
           </div>
-          {#key current.id}<ToolView />{/key}
+          {#key current.id}<ToolView /><ContinueWith tool={current.id} />{/key}
         </section>
       {:else if page}
         {#key page}<FilesPage {page} bind:heading />{/key}
