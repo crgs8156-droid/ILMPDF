@@ -2,12 +2,12 @@
 import { readFile } from 'node:fs/promises';
 import { defineConfig, type Plugin } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
-import { PROD_CSP, devHeaders, prodHeaders } from './security-headers.ts';
+import { PROD_CSP, devHeaders } from './security-headers.ts';
 
 // Loopback only: ILMPDF must never be reachable from other devices.
 const HOST = '127.0.0.1';
 const DEV_PORT = 5173;
-const PREVIEW_PORT = 4173;
+// The built app is served by our own server (scripts/serve.ts), not `vite preview`.
 
 // Defence in depth: the built index.html also carries the strict CSP as a
 // <meta> tag, so it still applies if the files are served some other way.
@@ -57,9 +57,6 @@ function securityHeaders(): Plugin {
     configureServer(server) {
       server.middlewares.use(apply(devHeaders(HOST, DEV_PORT)));
     },
-    configurePreviewServer(server) {
-      server.middlewares.use(apply(prodHeaders()));
-    },
   };
 }
 
@@ -68,11 +65,6 @@ export default defineConfig({
   server: {
     host: HOST,
     port: DEV_PORT,
-    strictPort: true,
-  },
-  preview: {
-    host: HOST,
-    port: PREVIEW_PORT,
     strictPort: true,
   },
   build: {

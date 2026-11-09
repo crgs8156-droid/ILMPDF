@@ -1,4 +1,4 @@
-// Checks the real preview server: every kind of reply (page, scripts,
+// Checks the real server (our own, scripts/serve.ts): every kind of reply (page, scripts,
 // workers, WebAssembly, styles, 304s, 404s) carries the full set of
 // security headers, and the server can't be reached from other devices.
 import { expect, test } from './fixtures';
@@ -52,11 +52,13 @@ test('revalidated (304) scripts and wasm keep all security headers', async ({ re
   }
 });
 
-// Vite answers unknown paths with the app page (single-page-app fallback);
-// whatever it answers must still carry the headers.
-test('an unknown path still gets the security headers', async ({ request }) => {
-  for (const path of ['/assets/does-not-exist.js', '/no/such/page']) {
-    expectAllHeaders(await request.get(path), path);
+// Unknown paths, and paths that try to leave dist/, are a 404 that still
+// carries the headers. (The app uses #/ addresses, so it needs no fallback page.)
+test('an unknown or escaping path is a 404 with the security headers', async ({ request }) => {
+  for (const path of ['/assets/does-not-exist.js', '/no/such/page', '/%2e%2e/package.json', '/.git/config']) {
+    const response = await request.get(path);
+    expect(response.status(), path).toBe(404);
+    expectAllHeaders(response, path);
   }
 });
 

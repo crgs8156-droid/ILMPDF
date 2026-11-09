@@ -1,5 +1,5 @@
 // Single source of truth for ILMPDF's security headers.
-// Production (vite preview / the installed app) uses the strict policy.
+// Production (our own server, scripts/serve.ts) uses the strict policy.
 // Dev relaxes only what Vite's hot reload needs: a websocket back to
 // the dev server and inline <style> tags injected during development.
 
