@@ -4,38 +4,48 @@
   import type { PdfFile } from '../core/files';
   import { parsePageGroups } from '../core/page-spec';
   import { closePdf, openPdf, pageToImage } from '../engines/pdfjs';
-  import { saveBytes } from '../core/save';
+  import { inZip, saveBytes, saveFiles, type OutFile } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
   import RunStatus from '../lib/RunStatus.svelte';
+  import ZipOption from '../lib/ZipOption.svelte';
 
   let format = $state<'image/png' | 'image/jpeg'>('image/png');
   let dpi = $state(150);
   let spec = $state('');
+  let asZip = $state(true);
   const job = new ToolRun();
-  // Each page is saved as soon as it is drawn, so a Cancel keeps the ones before it.
-  job.cancelNote = 'Stopped. Pages saved before you pressed Cancel are in your Downloads folder.';
+  const SAVED_SO_FAR = 'Stopped. Pages saved before you pressed Cancel are in your Downloads folder.';
 
   function convert(file: PdfFile) {
     job.run(async (signal) => {
+      // With "Save as one ZIP", pages are kept in memory and saved together at
+      // the end, so a Cancel saves nothing. Without it, each page downloads as
+      // soon as it is drawn, so a Cancel keeps the pages before it.
+      const zipping = asZip;
+      job.cancelNote = zipping ? null : SAVED_SO_FAR;
       const parsed = spec.trim() ? parsePageGroups(spec, file.pages) : { ok: true as const, groups: [Array.from({ length: file.pages }, (_, i) => i)] };
       if (!parsed.ok) throw new Error(parsed.error);
       const pages = [...new Set(parsed.groups.flat())];
       const doc = await openPdf(file.bytes);
       const ext = format === 'image/png' ? 'png' : 'jpg';
       const base = safeFileName(file.name).replace(/\.pdf$/, '');
+      const images: OutFile[] = [];
       try {
         for (const [n, index] of pages.entries()) {
           job.report(n, pages.length, `Page ${n + 1} of ${pages.length}…`);
           const blob = await pageToImage(doc, index + 1, format, dpi);
           // Drawing runs on this page, not in a worker, so check between pages.
           signal.throwIfAborted();
-          saveBytes(blob, `${base}-page-${index + 1}.${ext}`);
+          const name = `${base}-page-${index + 1}.${ext}`;
+          if (zipping) images.push({ name, bytes: new Uint8Array(await blob.arrayBuffer()), type: format });
+          else saveBytes(blob, name);
         }
       } finally {
         await closePdf(doc);
       }
-      return `Saved ${pages.length} image${pages.length === 1 ? '' : 's'}.`;
+      const zip = zipping ? saveFiles(images, `${base}-pages-${ext}.zip`, true) : null;
+      return `Saved ${pages.length} image${pages.length === 1 ? '' : 's'}${inZip(zip)}.`;
     });
   }
 </script>
@@ -61,11 +71,14 @@
           <input type="text" bind:value={spec} placeholder={`e.g. 1-${Math.min(3, file.pages)}`} data-testid="img-pages" />
         </label>
       </div>
+      <ZipOption bind:checked={asZip} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => convert(file)} data-testid="run">{job.busy ? 'Converting…' : 'Convert to images'}</button>
         <RunStatus run={job} />
       </div>
-      <p class="muted">Safari may ask once to allow several downloads.</p>
+      {#if !asZip}
+        <p class="muted">Safari may ask once to allow several downloads.</p>
+      {/if}
     </div>
     <Notice messages={job.errors} />
     <Notice kind="ok" messages={job.done} />

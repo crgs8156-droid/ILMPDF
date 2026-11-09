@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures';
 import { PDFDocument, PDFName } from 'pdf-lib';
-import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests } from './helpers';
+import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests, zipOf } from './helpers';
 import { makePdf, TINY_PNG } from '../fixtures/make-pdf';
 
 async function widths(bytes: Uint8Array): Promise<number[]> {
@@ -37,16 +37,26 @@ test('merge joins PDFs in the chosen order', async ({ page }) => {
   expect(await widths(await bytesOf(d!))).toEqual([200, 201, 202, 200, 201]);
 });
 
-test('split by ranges makes one file per range', async ({ page }) => {
+test('split by ranges makes one file per range, saved as one ZIP', async ({ page }) => {
   await openTool(page, 'split');
   await addPdf(page, 'report.pdf', makePdf(5));
   await page.getByTestId('split-spec').fill('1-2, 5');
-  const files = await collectDownloads(page, () => page.getByTestId('run').click(), 2);
-  const names = files.map((f) => f.suggestedFilename()).sort();
-  expect(names).toEqual(['report-part-1.pdf', 'report-part-2.pdf']);
-  const byName = Object.fromEntries(await Promise.all(files.map(async (f) => [f.suggestedFilename(), await bytesOf(f)])));
-  expect(await widths(byName['report-part-1.pdf'])).toEqual([200, 201]);
-  expect(await widths(byName['report-part-2.pdf'])).toEqual([204]);
+  const [zip] = await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+  expect(zip!.suggestedFilename()).toBe('report-parts.zip');
+  const files = await zipOf(zip!);
+  expect(files.map((f) => f.name)).toEqual(['report-part-1.pdf', 'report-part-2.pdf']);
+  expect(await widths(files[0]!.data)).toEqual([200, 201]);
+  expect(await widths(files[1]!.data)).toEqual([204]);
+  await expect(page.getByTestId('notice-ok')).toContainText('Created 2 PDFs in report-parts.zip.');
+});
+
+test('split into a single range saves a plain PDF, not a ZIP', async ({ page }) => {
+  await openTool(page, 'split');
+  await addPdf(page, 'report.pdf', makePdf(3));
+  await page.getByTestId('split-spec').fill('2-3');
+  const [d] = await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+  expect(d!.suggestedFilename()).toBe('report-part-1.pdf');
+  expect(await widths(await bytesOf(d!))).toEqual([201, 202]);
 });
 
 test('split rejects a bad range without running', async ({ page }) => {
@@ -94,14 +104,28 @@ test('images to PDF makes one page per image', async ({ page }) => {
   expect(doc.getPageCount()).toBe(2);
 });
 
-test('PDF to images renders real PNG files', async ({ page }) => {
+test('PDF to images renders real PNG files into one ZIP', async ({ page }) => {
   await openTool(page, 'pdf-to-images');
   await addPdf(page, 'scan.pdf', makePdf(3));
   await page.getByTestId('img-pages').fill('1, 3');
+  const [zip] = await collectDownloads(page, () => page.getByTestId('run').click(), 1);
+  expect(zip!.suggestedFilename()).toBe('scan-pages-png.zip');
+  const files = await zipOf(zip!);
+  expect(files.map((f) => f.name)).toEqual(['scan-page-1.png', 'scan-page-3.png']);
+  for (const f of files) expect([...f.data.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  await expect(page.getByTestId('notice-ok')).toContainText('Saved 2 images in scan-pages-png.zip.');
+});
+
+test('PDF to images can still save each page as its own file', async ({ page }) => {
+  await openTool(page, 'pdf-to-images');
+  await addPdf(page, 'scan.pdf', makePdf(3));
+  await page.getByTestId('img-format').selectOption('image/jpeg');
+  await page.getByTestId('img-pages').fill('1, 3');
+  await page.getByTestId('as-zip').uncheck();
   const files = await collectDownloads(page, () => page.getByTestId('run').click(), 2);
-  expect(files.map((f) => f.suggestedFilename()).sort()).toEqual(['scan-page-1.png', 'scan-page-3.png']);
-  const png = await bytesOf(files[0]!);
-  expect([...png.slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+  expect(files.map((f) => f.suggestedFilename()).sort()).toEqual(['scan-page-1.jpg', 'scan-page-3.jpg']);
+  const jpg = await bytesOf(files[0]!);
+  expect([...jpg.slice(0, 2)]).toEqual([0xff, 0xd8]);
 });
 
 test('page numbers and watermark keep every page', async ({ page }) => {
