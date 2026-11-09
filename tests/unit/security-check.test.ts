@@ -242,4 +242,25 @@ describe('security-check', () => {
     expect(status(out, 'git history')).toBe('FAIL');
     expect(out).toContain('shallow clone');
   });
+
+  it('fails when our own server is opened to other devices or swapped out', () => {
+    const good = [
+      "import { prodHeaders } from '../security-headers.ts';",
+      "export const HOST = '127.0.0.1';",
+      'server.listen(PORT, HOST, () => {});',
+    ].join('\n');
+    const pkg = (preview: string) => JSON.stringify({ dependencies: { 'pdf-lib': '1.17.1' }, scripts: { preview } });
+    const check = 'Our own server listens on 127.0.0.1 only';
+    expect(status(run(makeRepo({ 'scripts/serve.ts': good, 'package.json': pkg('node scripts/serve.ts') })).out, check)).toBe('ok');
+    expect(status(run(makeRepo({ 'scripts/serve.ts': good.replace('127.0.0.1', '0.0.0.0'), 'package.json': pkg('node scripts/serve.ts') })).out, check)).toBe('FAIL');
+    expect(status(run(makeRepo({ 'scripts/serve.ts': `${good}\nserver.listen(PORT, '::');`, 'package.json': pkg('node scripts/serve.ts') })).out, check)).toBe('FAIL');
+    expect(status(run(makeRepo({ 'scripts/serve.ts': good, 'package.json': pkg('vite preview --host') })).out, check)).toBe('FAIL');
+    expect(status(run(makeRepo({ 'package.json': pkg('vite preview') })).out, check)).toBe('FAIL');
+  });
+
+  it('fails when our own server makes a network request', () => {
+    const r = run(makeRepo({ 'scripts/serve.ts': "await fetch('https://example.com/');\n" }));
+    expect(status(r.out, 'zero egress')).toBe('FAIL');
+  });
 });
+

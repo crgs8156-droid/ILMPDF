@@ -67,6 +67,6 @@ step('Known vulnerabilities and package signatures (npm audit)', () => {
 console.log(
   failures.length
     ? `\nDAILY CHECK FAILED (${failures.join('; ')}). Don't use ILMPDF for real documents until this is fixed.`
-    : '\nDaily check passed. Start ILMPDF with npm run preview and look for the green badges.',
+    : '\nDaily check passed. Start ILMPDF with npm run preview (our own server, this Mac only) and look for the green badges.',
 );
 process.exitCode = failures.length ? 1 : 0;

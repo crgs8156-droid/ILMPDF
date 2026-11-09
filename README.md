@@ -29,13 +29,13 @@ Other tools refuse password-protected PDFs; unlock them first.
 
 ## First run on your Mac
 
-You need Node.js 22 or newer (`node -v` to check).
+You need Node.js 22.18 or newer (`node -v` to check).
 
 ```sh
 cd ~/Developer/ilmpdf
 npm ci                 # installs exact pinned versions; install scripts are disabled
 npm run build
-npm run preview        # opens on http://127.0.0.1:4173
+npm run preview        # ILMPDF's own small server, on http://127.0.0.1:4173 only
 ```
 
 Open http://127.0.0.1:4173 in Safari. The header should show

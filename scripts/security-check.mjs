@@ -266,7 +266,8 @@ function checkBannedPatterns(files) {
 // B. Network calls and web addresses in our own code.
 function checkEgress(files) {
   const problems = [];
-  for (const file of files.filter((f) => /^src\/.*\.(ts|js|mjs|svelte)$/.test(f) || f === 'index.html')) {
+  // Our own server is checked too: it must never call out either.
+  for (const file of files.filter((f) => /^src\/.*\.(ts|js|mjs|svelte)$/.test(f) || f === 'index.html' || f === SERVER)) {
     lines(file).forEach((line, i) => {
       for (const { re, name } of EGRESS) {
         if (!re.test(line)) continue;
@@ -276,6 +277,28 @@ function checkEgress(files) {
     });
   }
   report('No network calls or web addresses in app code (zero egress)', problems);
+}
+
+// Rule 8. Our own server (scripts/serve.ts) listens on 127.0.0.1 only, and
+// `npm run preview` starts it (not vite preview). Checked whenever either
+// exists, so the server can't be swapped or opened up unnoticed.
+const SERVER = 'scripts/serve.ts';
+function checkServer(files) {
+  const problems = [];
+  const pkg = JSON.parse(readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  const preview = pkg.scripts?.preview;
+  const hasServer = files.includes(SERVER);
+  if (!hasServer && preview === undefined) return;
+  if (preview !== `node ${SERVER}`) problems.push(`package.json: "preview" must be "node ${SERVER}", not ${JSON.stringify(preview)}`);
+  if (!hasServer) problems.push(`${SERVER} is missing`);
+  else {
+    const text = readFileSync(path.join(ROOT, SERVER), 'utf8');
+    if (!text.includes("export const HOST = '127.0.0.1';")) problems.push(`${SERVER}: HOST must be '127.0.0.1'`);
+    if (!text.includes('.listen(PORT, HOST,')) problems.push(`${SERVER}: must listen with .listen(PORT, HOST, ...)`);
+    if (/0\.0\.0\.0|['"]::['"]/.test(text)) problems.push(`${SERVER}: mentions an address open to other devices`);
+    if (!text.includes("from '../security-headers.ts'")) problems.push(`${SERVER}: must take its headers from security-headers.ts`);
+  }
+  report('Our own server listens on 127.0.0.1 only', problems);
 }
 
 // Rule 9. No PDF files in the repo, under any name.
@@ -464,6 +487,7 @@ function main() {
     checkVendor(files);
     checkBannedPatterns(files);
     checkEgress(files);
+    checkServer(files);
     checkNoPdfs(files);
     checkSecrets(files);
     checkWorkflows(files);

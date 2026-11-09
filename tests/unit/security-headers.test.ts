@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { PROD_CSP, devCsp, devHeaders, prodHeaders } from '../../security-headers';
 import viteConfig from '../../vite.config';
 import playwrightConfig from '../../playwright.config';
+import { HOST as SERVE_HOST, PORT as SERVE_PORT } from '../../scripts/serve';
+import { readFileSync } from 'node:fs';
+
+const packageJson = JSON.parse(readFileSync(new URL('../../package.json', import.meta.url), 'utf8')) as { scripts: Record<string, string> };
 
 const EXPECTED_PROD_CSP = [
   "default-src 'self'",
@@ -82,13 +86,17 @@ describe('dev server headers', () => {
 });
 
 describe('servers listen on this Mac only', () => {
-  it('dev and preview servers bind to 127.0.0.1 on fixed ports', () => {
+  it('the dev server and our own server bind to 127.0.0.1 on fixed ports', () => {
     expect(viteConfig.server?.host).toBe('127.0.0.1');
     expect(viteConfig.server?.port).toBe(5173);
     expect(viteConfig.server?.strictPort).toBe(true);
-    expect(viteConfig.preview?.host).toBe('127.0.0.1');
-    expect(viteConfig.preview?.port).toBe(4173);
-    expect(viteConfig.preview?.strictPort).toBe(true);
+    expect(SERVE_HOST).toBe('127.0.0.1');
+    expect(SERVE_PORT).toBe(4173);
+  });
+
+  it('npm run preview starts our own server, not vite preview', () => {
+    expect(packageJson.scripts.preview).toBe('node scripts/serve.ts');
+    expect(viteConfig.preview).toBeUndefined();
   });
 
   it('builds without source maps', () => {

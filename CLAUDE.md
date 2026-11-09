@@ -82,4 +82,6 @@ browser (JavaScript + WebAssembly). **Files must never leave the device.**
 - `src/lib/`: shared Svelte components
 - `vendor/stubs/`: local empty stand-ins for optional native packages we refuse to install
 - `security-headers.ts`: CSP and other headers for dev and production
+- `scripts/serve.ts`: ILMPDF's own server for the built app (`npm run preview`, e2e tests):
+  plain Node, `dist/` only, 127.0.0.1 only, headers from `security-headers.ts` on every reply
 - `docs/decisions/`: dated decision records

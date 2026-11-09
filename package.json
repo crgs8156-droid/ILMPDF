@@ -6,12 +6,12 @@
   "description": "Local-only PDF toolkit. All processing happens in the browser; files never leave the device.",
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.18"
   },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview",
+    "preview": "node scripts/serve.ts",
     "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
     "test": "vitest run",
     "test:fuzz": "vitest run --config tests/fuzz/vitest.config.ts",
