@@ -1,5 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { EDGE_SLACK, QUICK_SLICES, clampCentre, hitTest, layout, sliceCentre, slicePath, wheelSize } from '../../src/core/wheel';
+import {
+  EDGE_SLACK,
+  IMAGE_SLICES,
+  MANY_SLICES,
+  QUICK_SLICES,
+  RINGS,
+  SAME_FOR_MANY,
+  clampCentre,
+  hitTest,
+  layout,
+  pickRing,
+  ringForFiles,
+  sliceCentre,
+  slicePath,
+  wheelSize,
+} from '../../src/core/wheel';
 
 const OUTER = 150;
 const INNER = 57;
@@ -58,6 +73,45 @@ describe('wheel drawing', () => {
 
   it('has the quick actions in a fixed order with unique ids', () => {
     expect(QUICK_SLICES.map((s) => s.id)).toEqual(['compress', 'png', 'jpg', 'text', 'ocr', 'clean', 'flatten']);
-    for (const s of QUICK_SLICES) expect(s.icon).toMatch(/^M[\d .,MLHVAZhvlmaz-]+$/);
+    expect(MANY_SLICES.map((s) => s.id)).toEqual(['merge', 'compressAll', 'textAll', 'pngAll', 'cleanAll', 'ocrAll']);
+    expect(IMAGE_SLICES.map((s) => s.id)).toEqual(['imgPdf', 'imgFit', 'imgOcr']);
+    const all = Object.values(RINGS).flat();
+    // Ids double as test ids and busy texts, so they must be unique across rings.
+    expect(new Set(all.map((s) => s.id)).size).toBe(all.length);
+    for (const s of all) expect(s.icon).toMatch(/^M[\d .,MLHVAZhvlmaz-]+$/);
+  });
+});
+
+describe('choosing a ring', () => {
+  const file = (type: string) => ({ kind: 'file', type });
+
+  it('picks the ring from what is being dragged', () => {
+    expect(pickRing([file('application/pdf')])).toBe('one');
+    expect(pickRing([file('application/pdf'), file('application/pdf')])).toBe('many');
+    expect(pickRing([file('image/png')])).toBe('images');
+    expect(pickRing([file('image/png'), file('image/jpeg')])).toBe('images');
+    // A mix shows the several-PDFs ring; the drop then explains the mix.
+    expect(pickRing([file('image/png'), file('application/pdf')])).toBe('many');
+    // Hidden types are treated as PDFs, and text being dragged is ignored.
+    expect(pickRing([file(''), file('')])).toBe('many');
+    expect(pickRing([{ kind: 'string', type: 'text/plain' }, file('')])).toBe('one');
+    expect(pickRing([])).toBe('one');
+  });
+
+  it('checks the dropped files by type or name', () => {
+    expect(ringForFiles([{ name: 'a.pdf', type: 'application/pdf' }])).toBe('one');
+    expect(ringForFiles([{ name: 'a.pdf', type: '' }, { name: 'b.PDF', type: '' }])).toBe('many');
+    expect(ringForFiles([{ name: 'photo.HEIC', type: '' }])).toBe('images');
+    expect(ringForFiles([{ name: 'scan', type: 'image/jpeg' }, { name: 'b.png', type: '' }])).toBe('images');
+    expect(ringForFiles([{ name: 'a.pdf', type: '' }, { name: 'b.jpg', type: '' }])).toBeNull();
+    // Anything else goes to the PDF rings, where loading explains what is wrong.
+    expect(ringForFiles([{ name: 'notes.txt', type: 'text/plain' }])).toBe('one');
+  });
+
+  it('maps one-PDF slices to their several-PDFs twins', () => {
+    const many = new Set(MANY_SLICES.map((s) => s.id));
+    for (const twin of Object.values(SAME_FOR_MANY)) expect(many.has(twin!)).toBe(true);
+    expect(SAME_FOR_MANY.flatten).toBeUndefined();
+    expect(SAME_FOR_MANY.jpg).toBeUndefined();
   });
 });
