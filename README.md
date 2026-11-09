@@ -72,6 +72,9 @@ npm run dev       # http://127.0.0.1:5173 with hot reload
 npm run verify    # type check, unit tests, build, browser tests
 ```
 
+A PR can be merged when its CI run is green or `npm run verify` passes on
+your Mac. See `docs/2026-10-23-checking-a-pr-on-your-mac.md` for the exact steps.
+
 ### Test files
 
 ```sh
