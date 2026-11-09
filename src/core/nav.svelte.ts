@@ -31,7 +31,11 @@ class Nav {
 
   /** Opens a route as a new history entry, so Back returns here. */
   go(route: Route): void {
-    location.hash = toHash(route);
+    const hash = toHash(route);
+    location.hash = hash;
+    // The browser announces the new hash a moment later (hashchange). Update
+    // the route now, so nothing in between (an Esc press, say) sees the old one.
+    this.route = parseHash(hash, this.ids);
   }
 
   /** Swaps the current history entry for `route`, without adding one. */
@@ -40,6 +44,7 @@ class Nav {
     if (location.hash === hash) return;
     this.replacing = true;
     location.replace(hash);
+    this.route = parseHash(hash, this.ids);
   }
 
   /**

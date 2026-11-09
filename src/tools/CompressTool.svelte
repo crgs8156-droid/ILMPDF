@@ -6,6 +6,7 @@
   import { saveBytes } from '../core/save';
   import { formatBytes, safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf, cleanNote, describeRemoved, removeScripts } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
   import type { CompressLevel } from '../engines/mupdf-ops';
@@ -21,19 +22,19 @@
   const job = new ToolRun();
 
   function compress(file: PdfFile) {
-    job.run(async () => {
-      const out = await runMupdfJob({ op: 'compress', file: copyBytes(file.bytes), level });
+    job.run(async (signal) => {
+      const out = await runMupdfJob({ op: 'compress', file: copyBytes(file.bytes), level }, { signal });
       const { before, after } = out.sizes!;
       if (after >= before) {
         const tip = "This PDF is already compact: this level couldn't make it smaller. Try a stronger level.";
         if (!alsoClean) return tip.replace('smaller.', 'smaller, so no file was saved.');
         // Scripts were still asked to go, so clean the original instead.
-        const { files: [plain], removed } = await removeScripts([copyBytes(file.bytes)]);
+        const { files: [plain], removed } = await removeScripts([copyBytes(file.bytes)], signal);
         if (!describeRemoved(removed)) return `${tip} No scripts or attached files were found either, so no file was saved.`;
         saveBytes(plain!, safeFileName(file.name, '-clean'));
         return `${tip}${cleanNote(removed)} Saved that as a clean copy.`;
       }
-      const { files: [small], note } = await cleanIf(alsoClean, out.files!);
+      const { files: [small], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(small!, safeFileName(file.name, '-compressed'));
       const saved = Math.round((1 - after / before) * 100);
       return `Saved a compressed copy: ${formatBytes(before)} → ${formatBytes(after)} (${saved}% smaller).${note}`;
@@ -59,6 +60,7 @@
         <button type="button" disabled={job.busy} onclick={() => compress(file)} data-testid="run">
           {job.busy ? 'Compressing…' : 'Compress PDF'}
         </button>
+        <RunStatus run={job} />
       </div>
     </div>
     <Notice messages={job.errors} />

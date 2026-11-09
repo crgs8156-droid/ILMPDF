@@ -5,9 +5,20 @@
   import Icon from './Icon.svelte';
   import { UI_ICONS, groupClass } from './icons';
   import { TOOLS } from '../tools/registry';
+  import { shelf } from '../core/shelf.svelte';
+  import type { PageId } from '../core/router';
 
-  type Props = { here: string | null; onDashboard: boolean; onClose: () => void };
-  let { here, onDashboard, onClose }: Props = $props();
+  type Props = { here: string | null; onDashboard: boolean; page: PageId | null; onClose: () => void };
+  let { here, onDashboard, page, onClose }: Props = $props();
+
+  const FILE_PAGES: { id: PageId; label: string; icon: string; count: () => number }[] = [
+    { id: 'recent', label: 'Recent files', icon: UI_ICONS.clock, count: () => shelf.recent.length },
+    { id: 'files', label: 'Your files', icon: UI_ICONS.folder, count: () => shelf.files.length },
+    { id: 'saved', label: 'Saved files', icon: UI_ICONS.saved, count: () => shelf.saved.length },
+  ];
+  // "Clear all files" asks once, in place, before forgetting everything.
+  let confirming = $state(false);
+  const empty = $derived(shelf.files.length + shelf.saved.length + shelf.recent.length === 0);
 
   const groups = [...new Set(TOOLS.map((t) => t.group))];
   const opened = new SvelteSet<string>();
@@ -35,6 +46,13 @@
       <Icon d={UI_ICONS.dashboard} />
       Dashboard
     </a>
+    {#each FILE_PAGES as p (p.id)}
+      <a href="#/{p.id}" class="item" aria-current={page === p.id ? 'page' : undefined} onclick={onClose} data-testid="side-{p.id}">
+        <Icon d={p.icon} />
+        {p.label}
+        <span class="count">{p.count()}</span>
+      </a>
+    {/each}
   </nav>
 
   <h2>Tools</h2>
@@ -70,7 +88,18 @@
     {/each}
   </nav>
 
-  <p class="foot">Files stay on this Mac. They are held in memory only and are gone when you close this tab.</p>
+  <div class="foot">
+    <p>Files stay on this Mac. They are held in memory only and are gone when you close this tab.</p>
+    {#if confirming}
+      <p class="ask">Forget every file and result in this tab? Your originals and downloads are not touched.</p>
+      <div class="pair">
+        <button type="button" onclick={() => { shelf.clear(); confirming = false; }} data-testid="clear-yes">Clear</button>
+        <button type="button" class="quiet" onclick={() => (confirming = false)}>Cancel</button>
+      </div>
+    {:else}
+      <button type="button" class="quiet" disabled={empty} onclick={() => (confirming = true)} data-testid="clear-all">Clear all files</button>
+    {/if}
+  </div>
 </aside>
 
 <style>
@@ -180,12 +209,28 @@
     padding: 5px 10px;
   }
   .foot {
+    display: grid;
+    gap: 8px;
     margin: auto 0 0;
     padding: 10px;
     border-radius: 10px;
     background: var(--surface-2);
     font-size: 12px;
     color: var(--muted);
+  }
+  .foot p {
+    margin: 0;
+  }
+  .foot .ask {
+    color: var(--text);
+  }
+  .foot button {
+    font-size: 13px;
+    padding: 5px 10px;
+  }
+  .pair {
+    display: flex;
+    gap: 6px;
   }
   @media (max-width: 820px) {
     .close {

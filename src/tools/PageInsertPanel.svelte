@@ -7,6 +7,7 @@
   import { saveBytes } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import RunStatus from '../lib/RunStatus.svelte';
   import { cleanIf } from '../core/clean';
 
   type Props = { file: PdfFile };
@@ -38,7 +39,7 @@
   }
 
   function insert() {
-    job.run(async () => {
+    job.run(async (signal) => {
       const at = insertAt();
       if (what === 'pdf' && !other) throw new Error('Choose the PDF to insert.');
       const blanks = Math.trunc(Number(count));
@@ -48,8 +49,8 @@
         file: copyBytes(file.bytes),
         files: what === 'pdf' && other ? [copyBytes(other.bytes)] : [],
         opts: { at, blankCount: blanks },
-      });
-      const { files: [saved], note } = await cleanIf(alsoClean, out.files!);
+      }, { signal });
+      const { files: [saved], note } = await cleanIf(alsoClean, out.files!, signal);
       saveBytes(saved!, safeFileName(file.name, '-inserted'));
       const added = what === 'pdf' ? other!.pages : blanks;
       return `Added ${added} page${added === 1 ? '' : 's'}.${note}`;
@@ -96,6 +97,7 @@
   <RemoveScriptsOption bind:checked={alsoClean} />
   <div class="actions">
     <button disabled={job.busy} onclick={insert} data-testid="run">{job.busy ? 'Working…' : 'Insert pages'}</button>
+    <RunStatus run={job} />
   </div>
 </div>
 <Notice messages={job.errors} />

@@ -45,7 +45,7 @@ test('Forward to a closed file explains that it was not kept', async ({ page }) 
   await page.goBack();
   await expect(page.getByTestId('loaded-file')).toHaveCount(0);
   await page.goForward();
-  await expect(page.getByTestId('notice-info')).toContainText('never keeps files');
+  await expect(page.getByTestId('notice-info')).toContainText('was closed');
   await expect(page).toHaveURL(/#\/compress$/);
   await expect(page.getByTestId('loaded-file')).toHaveCount(0);
 });
@@ -85,6 +85,26 @@ test('Esc leaves a tool only before a file is loaded', async ({ page }) => {
   await expect(page.getByTestId('open-compress')).toBeVisible();
 });
 
+test('Esc right after a PDF loads keeps the file', async ({ page }) => {
+  // Hold back the browser's hashchange event, so the test always lands in the
+  // moment between "file shown" and "address updated" that CI hit by chance.
+  await page.addInitScript(() => {
+    const add = window.addEventListener.bind(window);
+    window.addEventListener = ((type: string, fn: EventListener, opts?: AddEventListenerOptions) => {
+      if (type !== 'hashchange') return add(type, fn, opts);
+      return add(type, (e: Event) => setTimeout(() => fn(e), 1000), opts);
+    }) as typeof window.addEventListener;
+  });
+  await page.goto('/');
+  await page.getByTestId('open-compress').click();
+  await addPdf(page, 'a.pdf', makePdf(1));
+  await expect(page.getByTestId('loaded-file')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(1500);
+  await expect(page.getByTestId('loaded-file')).toBeVisible();
+  await expect(page).toHaveURL(/#\/compress\/file$/);
+});
+
 test('an unknown address shows a not-found page with a way home', async ({ page }) => {
   await page.goto('/#/no-such-tool');
   await expect(page.getByTestId('not-found')).toBeVisible();
@@ -95,6 +115,6 @@ test('an unknown address shows a not-found page with a way home', async ({ page 
 
 test('reloading on a file step returns to the picker', async ({ page }) => {
   await page.goto('/#/compress/file');
-  await expect(page.getByTestId('notice-info')).toContainText('never keeps files');
+  await expect(page.getByTestId('notice-info')).toContainText('was closed');
   await expect(page).toHaveURL(/#\/compress$/);
 });

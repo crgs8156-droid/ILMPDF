@@ -13,13 +13,13 @@ const empty = (): SanitizeReport => ({ scripts: 0, autoActions: 0, openers: 0, d
  * remove is returned unchanged. The files passed in are moved into the
  * workers, so callers must not use them afterwards.
  */
-export async function removeScripts(files: Uint8Array[]): Promise<Cleaned> {
+export async function removeScripts(files: Uint8Array[], signal?: AbortSignal): Promise<Cleaned> {
   const removed = empty();
   const out: Uint8Array[] = [];
   // One after another: each job loads a full copy of MuPDF.
   for (const file of files) {
     const keep = file.slice();
-    const result = await runMupdfJob({ op: 'sanitize', file });
+    const result = await runMupdfJob({ op: 'sanitize', file }, { signal });
     out.push(result.files?.[0] ?? keep);
     for (const key of Object.keys(removed) as (keyof SanitizeReport)[]) removed[key] += result.removed?.[key] ?? 0;
   }
@@ -30,10 +30,11 @@ export async function removeScripts(files: Uint8Array[]): Promise<Cleaned> {
  * What tools call just before saving: when the option is ticked, cleans the
  * files and returns a sentence to add to the result message. When it is not
  * ticked, the files come back as they are and the sentence is empty.
+ * `signal` is the tool's Cancel switch (see ToolRun).
  */
-export async function cleanIf(on: boolean, files: Uint8Array[]): Promise<{ files: Uint8Array[]; note: string }> {
+export async function cleanIf(on: boolean, files: Uint8Array[], signal?: AbortSignal): Promise<{ files: Uint8Array[]; note: string }> {
   if (!on) return { files, note: '' };
-  const cleaned = await removeScripts(files);
+  const cleaned = await removeScripts(files, signal);
   return { files: cleaned.files, note: cleanNote(cleaned.removed) };
 }
 

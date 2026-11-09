@@ -3,28 +3,34 @@ import { JOB_TIMEOUT_MS, OCR_PAGE_TIMEOUT_MS } from './limits';
 
 // Each job gets a fresh worker that is terminated as soon as the job ends,
 // so a crash (or an exploit in a parser) dies with that one job.
-export function runPdfJob(job: PdfJob): Promise<JobOutput> {
+export type JobOptions = {
+  /** Aborting (the tool's Cancel button) ends the worker at once; nothing is saved. */
+  signal?: AbortSignal | undefined;
+};
+
+/** The error a job rejects with when it was cancelled. */
+export const CANCELLED = 'Cancelled. Nothing was saved.';
+
+export function runPdfJob(job: PdfJob, opts: JobOptions = {}): Promise<JobOutput> {
   // Vite needs the literal `new URL(...)` here to bundle the worker.
   const worker = new Worker(new URL('../workers/pdflib.worker.ts', import.meta.url), {
     type: 'module',
     name: 'ilmpdf-pdflib',
   });
-  return runInWorker(worker, job);
+  return runInWorker(worker, job, opts.signal);
 }
 
 /** Same as runPdfJob, but on the MuPDF engine (passwords, repair, compress). */
-export function runMupdfJob(job: MupdfJob): Promise<JobOutput> {
+export function runMupdfJob(job: MupdfJob, opts: JobOptions = {}): Promise<JobOutput> {
   const worker = new Worker(new URL('../workers/mupdf.worker.ts', import.meta.url), {
     type: 'module',
     name: 'ilmpdf-mupdf',
   });
-  return runInWorker(worker, job);
+  return runInWorker(worker, job, opts.signal);
 }
 
-export type OcrRunOptions = {
+export type OcrRunOptions = JobOptions & {
   onProgress?: (done: number, total: number) => void;
-  /** Aborting stops the worker at once; nothing is saved. */
-  signal?: AbortSignal;
 };
 
 /**
@@ -55,7 +61,7 @@ export function runOcrJob(job: OcrJob, opts: OcrRunOptions = {}): Promise<JobOut
     };
     const cancel = () => {
       finish();
-      reject(new Error('OCR was cancelled. Nothing was saved.'));
+      reject(new Error(CANCELLED));
     };
     if (opts.signal?.aborted) return cancel();
     opts.signal?.addEventListener('abort', cancel);
@@ -85,19 +91,28 @@ export function runOcrJob(job: OcrJob, opts: OcrRunOptions = {}): Promise<JobOut
   });
 }
 
-function runInWorker(worker: Worker, job: PdfJob | MupdfJob): Promise<JobOutput> {
+function runInWorker(worker: Worker, job: PdfJob | MupdfJob, signal?: AbortSignal): Promise<JobOutput> {
   const id = crypto.randomUUID();
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      worker.terminate();
+      finish();
       reject(new Error('This job took too long and was stopped.'));
     }, JOB_TIMEOUT_MS);
 
+    // terminate() ends the worker straight away, even in the middle of a
+    // WebAssembly call, and frees its memory (engine and file copy).
     const finish = () => {
       clearTimeout(timer);
+      signal?.removeEventListener('abort', cancel);
       worker.terminate();
     };
+    const cancel = () => {
+      finish();
+      reject(new Error(CANCELLED));
+    };
+    if (signal?.aborted) return cancel();
+    signal?.addEventListener('abort', cancel);
 
     worker.onmessage = (event: MessageEvent<JobResult>) => {
       finish();
