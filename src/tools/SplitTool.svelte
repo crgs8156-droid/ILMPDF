@@ -4,17 +4,19 @@
   import type { PdfFile } from '../core/files';
   import { everyNPages, parsePageGroups } from '../core/page-spec';
   import { copyBytes, runPdfJob } from '../core/orchestrator';
-  import { saveBytes } from '../core/save';
+  import { inZip, saveFiles } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
   import { cleanIf } from '../core/clean';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
+  import ZipOption from '../lib/ZipOption.svelte';
 
   let mode = $state<'ranges' | 'every'>('ranges');
   let spec = $state('');
   let size = $state(1);
   const job = new ToolRun();
   let alsoClean = $state(false);
+  let asZip = $state(true);
 
   function split(file: PdfFile) {
     job.run(async () => {
@@ -28,8 +30,9 @@
       }
       const out = await runPdfJob({ op: 'pick', file: copyBytes(file.bytes), groups });
       const { files, note } = await cleanIf(alsoClean, out.files!);
-      files.forEach((bytes, i) => saveBytes(bytes, safeFileName(file.name, `-part-${i + 1}`)));
-      return `Created ${files.length} PDF${files.length === 1 ? '' : 's'}.${note}`;
+      const named = files.map((bytes, i) => ({ name: safeFileName(file.name, `-part-${i + 1}`), bytes }));
+      const zip = saveFiles(named, safeFileName(file.name, '-parts', '.zip'), asZip);
+      return `Created ${files.length} PDF${files.length === 1 ? '' : 's'}${inZip(zip)}.${note}`;
     });
   }
 </script>
@@ -55,6 +58,7 @@
         {/if}
       </div>
       <RemoveScriptsOption bind:checked={alsoClean} />
+      <ZipOption bind:checked={asZip} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => split(file)} data-testid="run">{job.busy ? 'Splitting…' : 'Split PDF'}</button>
       </div>

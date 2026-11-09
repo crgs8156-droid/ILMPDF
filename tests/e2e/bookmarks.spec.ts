@@ -1,6 +1,6 @@
 import { expect, test } from './fixtures';
 import * as mupdf from 'mupdf';
-import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests } from './helpers';
+import { addPdf, bytesOf, collectDownloads, offOrigin, openTool, trackRequests, zipOf } from './helpers';
 import { makePdf } from '../fixtures/make-pdf';
 import { readBookmarks } from '../../src/engines/mupdf-bookmarks';
 // @ts-expect-error: plain JavaScript script without type declarations
@@ -39,26 +39,29 @@ test('bookmarks: shows, edits and saves bookmarks', async ({ page }) => {
   expect(offOrigin(requests)).toEqual([]);
 });
 
-test('bookmarks: splits into one PDF per top-level bookmark', async ({ page }) => {
+test('bookmarks: splits into one PDF per top-level bookmark, saved as one ZIP', async ({ page }) => {
   test.slow();
   await openTool(page, 'bookmarks');
   await addPdf(page, 'chapters.pdf', await get('38-bookmarks-chapters.pdf'));
   await expect(page.getByTestId('bm-split-summary')).toContainText('Makes 5 files');
-  const parts = await collectDownloads(page, () => page.getByTestId('bm-split').click(), 5);
-  expect(parts.map((d) => d.suggestedFilename())).toEqual([
+  const [zip] = await collectDownloads(page, () => page.getByTestId('bm-split').click(), 1);
+  expect(zip!.suggestedFilename()).toBe('chapters-parts.zip');
+  const parts = await zipOf(zip!);
+  expect(parts.map((f) => f.name)).toEqual([
     'chapters-1-Start.pdf',
     'chapters-2-Chapter 1_ Introduction.pdf',
     'chapters-3-Chapter 2_ Method.pdf',
     'chapters-4-Chapter 3_ Results.pdf',
     'chapters-5-Appendix.pdf',
   ]);
-  const counts = await Promise.all(parts.map(async (d) => {
-    const doc = mupdf.Document.openDocument(await bytesOf(d), 'application/pdf');
+  const counts = parts.map((f) => {
+    const doc = mupdf.Document.openDocument(f.data, 'application/pdf');
     const n = doc.countPages();
     doc.destroy();
     return n;
-  }));
+  });
   expect(counts).toEqual([1, 3, 4, 3, 1]);
+  await expect(page.getByTestId('notice-ok').last()).toContainText('Created 5 PDFs in chapters-parts.zip.');
 });
 
 test('bookmarks: hostile titles stay plain text and nothing runs', async ({ page }) => {

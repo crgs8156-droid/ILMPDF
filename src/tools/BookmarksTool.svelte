@@ -4,18 +4,20 @@
   import BookmarksEditor, { type Row } from './BookmarksEditor.svelte';
   import type { PdfFile } from '../core/files';
   import { copyBytes, runMupdfJob, runPdfJob } from '../core/orchestrator';
-  import { saveBytes } from '../core/save';
+  import { inZip, saveBytes, saveFiles } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
   import { cleanIf } from '../core/clean';
   import { MAX_SPLIT_PARTS, partFileName, planSplit } from '../core/bookmarks';
   import RemoveScriptsOption from '../lib/RemoveScriptsOption.svelte';
+  import ZipOption from '../lib/ZipOption.svelte';
 
   // The bookmarks as read from the file and as edited, kept only in memory.
   let rows = $state<Row[]>([]);
   let file = $state<PdfFile | null>(null);
   let splitLevel = $state(0);
   let alsoClean = $state(false);
+  let asZip = $state(true);
   const save = new ToolRun();
   const split = new ToolRun();
   let nextKey = 0;
@@ -55,8 +57,9 @@
       if (plan.length > MAX_SPLIT_PARTS) throw new Error(`That would make ${plan.length} files. ILMPDF makes at most ${MAX_SPLIT_PARTS} at a time.`);
       const out = await runPdfJob({ op: 'pick', file: copyBytes(f.bytes), groups: plan.map((p) => p.pages) });
       const { files, note } = await cleanIf(alsoClean, out.files!);
-      files.forEach((bytes, i) => saveBytes(bytes, partFileName(f.name, i + 1, files.length, plan[i]!.title)));
-      return `Created ${files.length} PDF${files.length === 1 ? '' : 's'}.${note}`;
+      const named = files.map((bytes, i) => ({ name: partFileName(f.name, i + 1, files.length, plan[i]!.title), bytes }));
+      const zip = saveFiles(named, safeFileName(f.name, '-parts', '.zip'), asZip);
+      return `Created ${files.length} PDF${files.length === 1 ? '' : 's'}${inZip(zip)}.${note}`;
     });
   }
 </script>
@@ -101,6 +104,7 @@
               Makes {parts.length} file{parts.length === 1 ? '' : 's'}, named after the bookmarks. Uses the bookmarks as edited above.
             {/if}
           </p>
+          <ZipOption bind:checked={asZip} />
           <div class="actions">
             <button type="button" disabled={split.busy || parts.length === 0} onclick={() => splitByBookmarks(f)} data-testid="bm-split">
               {split.busy ? 'Splitting…' : 'Split PDF'}

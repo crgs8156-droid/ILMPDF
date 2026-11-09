@@ -63,6 +63,7 @@ test('also remove scripts: a file with nothing to remove is saved and says so', 
   await addPdf(page, 'plain.pdf', makePdf(3));
   await page.getByTestId('split-spec').fill('1, 2-3');
   await page.getByTestId('also-clean').check();
+  await page.getByTestId('as-zip').uncheck();
   const saved = await collectDownloads(page, () => page.getByTestId('run').click(), 2);
   expect(saved.map((d) => d.suggestedFilename())).toEqual(['plain-part-1.pdf', 'plain-part-2.pdf']);
   await expect(page.getByTestId('notice-ok')).toContainText('Created 2 PDFs. No scripts or attached files were found.');

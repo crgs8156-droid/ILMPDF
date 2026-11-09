@@ -1,5 +1,6 @@
 import { expect, type Download, type Page, type Request } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { readZip, type ZipFile } from '../fixtures/read-zip';
 
 export const ORIGIN = 'http://127.0.0.1:4173';
 
@@ -38,4 +39,9 @@ export async function collectDownloads(page: Page, click: () => Promise<void>, e
 
 export async function bytesOf(download: Download): Promise<Uint8Array> {
   return new Uint8Array(await readFile((await download.path())!));
+}
+
+/** Reads a downloaded ZIP (made by "Save as one ZIP") into its files, checking the archive as it goes. */
+export async function zipOf(download: Download): Promise<ZipFile[]> {
+  return readZip(await bytesOf(download));
 }

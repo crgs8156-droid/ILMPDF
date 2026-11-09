@@ -4,14 +4,16 @@
   import type { PdfFile } from '../core/files';
   import { parsePageGroups } from '../core/page-spec';
   import { closePdf, openPdf, pageToImage } from '../engines/pdfjs';
-  import { saveBytes } from '../core/save';
+  import { inZip, saveFiles, type OutFile } from '../core/save';
   import { safeFileName } from '../core/validate';
   import { ToolRun } from '../core/run.svelte';
+  import ZipOption from '../lib/ZipOption.svelte';
 
   let format = $state<'image/png' | 'image/jpeg'>('image/png');
   let dpi = $state(150);
   let spec = $state('');
   let progress = $state('');
+  let asZip = $state(true);
   const job = new ToolRun();
 
   function convert(file: PdfFile) {
@@ -22,17 +24,21 @@
       const doc = await openPdf(file.bytes);
       const ext = format === 'image/png' ? 'png' : 'jpg';
       const base = safeFileName(file.name).replace(/\.pdf$/, '');
+      // All pages are rendered first, then saved together (as one ZIP or as
+      // separate files), the same way the quick actions do it.
+      const images: OutFile[] = [];
       try {
         for (const [n, index] of pages.entries()) {
           progress = `Page ${n + 1} of ${pages.length}…`;
           const blob = await pageToImage(doc, index + 1, format, dpi);
-          saveBytes(blob, `${base}-page-${index + 1}.${ext}`);
+          images.push({ name: `${base}-page-${index + 1}.${ext}`, bytes: new Uint8Array(await blob.arrayBuffer()), type: format });
         }
       } finally {
         progress = '';
         await closePdf(doc);
       }
-      return `Saved ${pages.length} image${pages.length === 1 ? '' : 's'}.`;
+      const zip = saveFiles(images, `${base}-pages-${ext}.zip`, asZip);
+      return `Saved ${pages.length} image${pages.length === 1 ? '' : 's'}${inZip(zip)}.`;
     });
   }
 </script>
@@ -58,11 +64,14 @@
           <input type="text" bind:value={spec} placeholder={`e.g. 1-${Math.min(3, file.pages)}`} data-testid="img-pages" />
         </label>
       </div>
+      <ZipOption bind:checked={asZip} />
       <div class="actions">
         <button disabled={job.busy} onclick={() => convert(file)} data-testid="run">{job.busy ? 'Converting…' : 'Convert to images'}</button>
         <span class="muted">{progress}</span>
       </div>
-      <p class="muted">Safari may ask once to allow several downloads.</p>
+      {#if !asZip}
+        <p class="muted">Safari may ask once to allow several downloads.</p>
+      {/if}
     </div>
     <Notice messages={job.errors} />
     <Notice kind="ok" messages={job.done} />
